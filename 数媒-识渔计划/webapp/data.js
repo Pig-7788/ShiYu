@@ -319,9 +319,11 @@ SAMPLES.forEach(s => {
 const SAMPLE_MAP = Object.fromEntries(SAMPLES.map(s => [s.id, s]));
 
 /* ---------- 训练战役 ---------- */
+/* 前测/后测各 5 题、构成一致（3 钓 / 2 正），保证「前测→后测识别率」增量可比；
+   正常样本混入前测是为了让前测也能暴露误报（全钓鱼的前测会被「无脑全判钓鱼」拿满分）。 */
 const CAMPAIGN = {
-  pretest:  ["em1", "sms1", "lp1", "em4", "sms4"],
-  train:    ["em2", "em3", "sms2", "sms3", "em5", "lp2", "em7", "lp3", "em8", "lp4"],
+  pretest:  ["em1", "em3", "sms1", "lp3", "em4"],
+  train:    ["em2", "lp1", "sms2", "sms3", "em5", "lp2", "em7", "sms4", "em8", "lp4"],
   posttest: ["sms5", "em6", "lp5", "sms6", "em9"],
 };
 
