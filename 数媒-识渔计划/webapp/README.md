@@ -17,12 +17,13 @@
 
 | 文件 | 职责 |
 |---|---|
-| `index.html` | 页面骨架：首页 / 拦截战(v-game) / 报告 / 造浪者(v-attack) / 画像 / 关于 |
+| `index.html` | 页面骨架：首页 / 拦截战(v-game) / 报告 / 造浪者(v-attack) / 画像 / 社区(v-community) / 关于 |
 | `styles.css` | 深色科技风全部样式；拖拽/槽位高亮/扫描束/连击弹字等动效关键帧 |
-| `data.js` | **数据层**：20 个虚构样本（含破绽标注）、战役波次编排、9 张基因卡、五维/类别常量 |
-| `app.js` | **逻辑层**：拦截战状态机、拆解台拖放、组装实验室（滑杆+预测仪+扫描束）、安全官（TTS/打字机）、雷达图、本地存档 |
+| `data.js` | **数据层**：20 个虚构样本（含破绽标注）、战役波次编排、9 张基因卡、五维/类别常量；社区投稿通道常量与 `FB_TYPES`/`FB_SCAMS` 选项 |
+| `app.js` | **逻辑层**：拦截战状态机、拆解台拖放、组装实验室（滑杆+预测仪+扫描束）、安全官（TTS/打字机）、雷达图、本地存档；社区投稿模块（`cm*`） |
 | `agent.js` / `config.js` | AI 智能体「渔安」：云端配置（Key 混淆存储）与 OpenAI 兼容流式对话封装（`Agent.cloudChat`，`noHist` 参数供分析类单发调用） |
 | `analyst.js` | **AI 训练诊断**：把段位/五维/漏判分布/错题本打包成快照 → 大模型流式出具个性化诊断（报告页 + 画像页）；按 `report.at` 缓存，云端不可用回落规则版诊断 |
+| `tools/` | `validate_data.js` 数据校验（加题/改题后必跑）、`obscure_key.js` Key 混淆工具 |
 
 ## 核心模块速览（app.js）
 
@@ -33,6 +34,7 @@
 - `SFX` —— WebAudio 合成音效（拾取/命中/警报/连击），无音频文件
 - `drawRadar()/finishGame()/renderReport()` —— 五维画像与前后测报告
 - `Analyst`（analyst.js）—— AI 训练诊断：训练数据快照 → 云端流式出具「总评 / 薄弱分析 / 训练处方 / 提醒」；报告页与画像页共用一套缓存，`AI_DIAG_SYS` 为提示词
+- `cm*` —— 社区投稿：`cmBuildGroup()` 渲染单选胶囊、`cmSync()` 授权与填写联动按钮置灰、`cmSubmit()` 只做校验并展开双渠道、`cmBuildText()` 生成投稿文本、`cmCopy()` 剪贴板三级降级、`cmSave()/cmRestore()` 草稿持久化（独立 key）
 
 ## 数据结构（data.js）
 
@@ -51,11 +53,16 @@
 
 ## 如何扩展
 
-- **加样本**：按 Schema 在 `SAMPLES` 追加，并把 id 编入 `CAMPAIGN` 四波队列；靶点 id 必须与 `redflags.target` 一致（可跑根目录校验脚本核对）。
+- **加样本**：按 Schema 在 `SAMPLES` 追加，并把 id 编入 `CAMPAIGN` 四波队列；靶点 id 必须与 `redflags.target` 一致（跑 `node tools/validate_data.js` 核对，须输出「✔ 数据校验通过」）。
 - **加检测规则**：`FREE_RULES` 追加 `{k, name, cls, det, re, know}` 即同时生效于自由撰写与复盘。
 - **换/接大模型**：`Officer.play(script)` 的 script 与 `OFFICER_QA[*].a()` 是唯一话术出口——替换为后端流式接口即可，前端打字机与 TTS 复用；`launchAttack` 的检出公式可替换为服务端分类器。
 - **调 AI 训练诊断**：编辑 `analyst.js` 顶部 `AI_DIAG_SYS`（输出格式与约束）和 `snapshot()`（喂给模型的数据字段）；缓存键 `LS_CACHE`，按 `report.at` 世代失效；本地联调可用 `scripts/mock_llm.py`（会识别“训练教练”系统提示词并回显快照数字）。
 - **音效/语音开关**：右上 `🔊`（localStorage `shiyu_voice`）。
+- **社区投稿·增删选项**：内容类型/骗局类别只在 `data.js` 的 `FB_TYPES`、`FB_SCAMS` 增删，表单会自动重渲染。改 `FB_SCAMS` 时须同步问卷星问卷 Q2，保持选项与顺序一致（渠道文本里的「骗局类别」直接取这里的 `name`）。
+- **社区投稿·换投稿通道**：只改 `data.js` 顶部 `FEEDBACK_FORM_URL` / `FEEDBACK_EMAIL` 两个常量；渠道按钮、`mailto` 收件人会跟着变。注意 `index.html` 渠道副文案里「发送至邮箱 xxx」为硬编码展示文案，换邮箱时须同步改这一处。
+- **社区投稿·改文本模板**：改 `app.js` 的 `cmBuildText()`；两个渠道版本仅最后一行（`提交渠道：`）不同，其余必须一致，否则问卷与邮箱两条通道的投稿记录会对不上。正文 `trim()` 后硬截断 500 字（`maxlength` 可被粘贴绕过，故双保险）。
+- **社区投稿·草稿**：独立 key `SHIYU_COMMUNITY_DRAFT`，与 `shiyu_v3`（存档）/`shiyu_wrong`/`shiyu_daily`/`shiyu_ai_diag` 完全隔离；「清空训练数据」按设计**不删**投稿草稿。给表单加字段时，记得在 `cmSave()`/`cmRestore()` 同步读写。
+- **社区投稿·复制通道**：三级降级 `clipboard.writeText` → 隐藏 textarea + `execCommand('copy')` → 露出手动复制文本框（`cmCopy()`），新增渠道时复用它，不要直接调 `navigator.clipboard`，否则非安全上下文（`file://` 或 http 局域网）会直接报错。
 
 ## 合规要点（内建）
 
