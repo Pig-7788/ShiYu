@@ -612,3 +612,86 @@ footer { margin-top: 10px; font-size: 9px; line-height: 1.5; }
 /* 修复：限定结果徽章范围在卡片区内（不再铺满整个分拣区） */
 .g-center { position: relative; }
 .g-badge { border-radius: 10px; }
+
+/* ================= 社区投稿（深色科技风：复用既有配色变量与组件形态） ================= */
+#v-community .hidden { display: none; }
+#v-community .card { margin: 8px 0; }
+
+/* 个人信息警示条 */
+.c-warn {
+  display: block; margin: 8px 0; padding: 9px 11px;
+  font-size: 12px; line-height: 1.65; color: var(--amber);
+  background: var(--red-dim); border: 1px solid rgba(255,84,112,.45);
+  border-left: 3px solid var(--red); border-radius: 10px;
+}
+
+/* 单选胶囊组 */
+.c-group { display: flex; flex-wrap: wrap; gap: 7px; }
+.c-opt {
+  position: relative; display: inline-flex; align-items: center;
+  font-size: 11.5px; line-height: 1.4; padding: 6px 12px; border-radius: 20px;
+  border: 1px solid var(--line); color: var(--txt-dim); background: var(--panel2);
+  cursor: pointer; transition: .15s; user-select: none;
+}
+.c-opt span { pointer-events: none; }
+.c-opt input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.c-opt:hover { border-color: rgba(53,224,200,.5); color: var(--txt); }
+.c-opt.on {
+  color: var(--cyan); border-color: rgba(53,224,200,.6);
+  background: var(--cyan-dim); box-shadow: 0 0 10px rgba(53,224,200,.12) inset;
+}
+.c-opt input:focus-visible + span { text-decoration: underline dotted; }
+
+/* 描述框与字数计数 */
+.c-textarea {
+  display: block; width: 100%; min-height: 104px; resize: vertical;
+  padding: 9px 11px; font-family: inherit; font-size: 12px; line-height: 1.7;
+  color: var(--txt); background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.c-textarea::placeholder { color: var(--txt-dim); opacity: .8; }
+.c-textarea:focus { outline: none; border-color: rgba(53,224,200,.5); }
+.c-count { text-align: right; font-size: 10.5px; color: var(--txt-dim); margin-top: 5px; letter-spacing: .5px; }
+.c-count.over { color: var(--amber); }
+
+/* 授权勾选 */
+.c-agree { display: flex; align-items: flex-start; gap: 8px; font-size: 11.5px; line-height: 1.7;
+  color: var(--txt-dim); cursor: pointer; }
+.c-agree input { flex: none; width: 16px; height: 16px; margin-top: 2px; accent-color: var(--cyan); cursor: pointer; }
+.c-agree span { pointer-events: none; }
+
+/* 校验提示 */
+.c-note { margin: 8px 0; padding: 8px 11px; font-size: 11.5px; line-height: 1.6;
+  border-radius: 10px; border: 1px solid var(--line); }
+.c-note.bad { color: var(--red); border-color: rgba(255,84,112,.5); background: var(--red-dim); }
+.c-note.ok { color: var(--cyan); border-color: rgba(53,224,200,.5); background: var(--cyan-dim); }
+.c-note.shake { animation: shake .35s ease; }
+
+/* 渠道区：复制结果 + 文本预览 */
+#c-panel { animation: fadein .3s ease; }
+.c-copy-ok { font-size: 11.5px; font-weight: 700; color: var(--cyan); margin: 8px 0 4px; letter-spacing: .5px; }
+.c-copy-ok::before { content: "✓ "; }
+.c-copy-ok.manual { color: var(--amber); }
+.c-copy-ok.manual::before { content: "! "; }
+.c-preview {
+  max-height: 168px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  margin: 0 0 8px; padding: 9px 11px; font-family: inherit; font-size: 11px; line-height: 1.75;
+  color: var(--txt); background: var(--panel); border: 1px dashed var(--line); border-radius: 10px;
+}
+.c-chan-tip { font-size: 10.5px; line-height: 1.7; color: var(--txt-dim); margin: 8px 0 2px; }
+.c-altbox {
+  display: block; width: 100%; min-height: 96px; resize: vertical; margin: 8px 0 0;
+  padding: 9px 11px; font-family: inherit; font-size: 11px; line-height: 1.7;
+  color: var(--amber); background: var(--panel2);
+  border: 1px solid rgba(255,184,77,.5); border-radius: 10px;
+}
+.c-altbox:focus { outline: none; border-color: rgba(255,184,77,.8); }
+.btn.ghost { background: var(--panel); border-color: var(--line); }
+.btn.ghost:hover { border-color: var(--amber); }
+
+/* 窄屏紧凑 */
+@media (max-width: 380px) {
+  .c-opt { font-size: 11px; padding: 5px 10px; }
+  .c-textarea { min-height: 92px; font-size: 11.5px; }
+  .c-warn { font-size: 11.5px; }
+}

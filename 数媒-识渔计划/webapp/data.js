@@ -1,5 +1,27 @@
 /* ============ 识渔计划 数据层（全部样本为虚构，仅用于教学模拟） ============ */
 
+/* ---------- 社区投稿通道（仅由用户点击渠道按钮时使用；页面不产生任何自动跳转） ---------- */
+const FEEDBACK_FORM_URL = "https://v.wjx.cn/vm/h6yga86.aspx"; // 问卷星投稿问卷；仅按钮触发，禁止自动打开
+const FEEDBACK_EMAIL = "kaythyleo9617@outlook.com";           // 备用投稿邮箱；用于 mailto 与剪贴板文案
+
+/* 社区投稿·内容类型（单选） */
+const FB_TYPES = [
+  { k: "real",  name: "真实遭遇" },
+  { k: "tip",   name: "防骗建议" },
+  { k: "other", name: "其他" },
+];
+
+/* 社区投稿·骗局类别（单选，对应问卷 Q2） */
+const FB_SCAMS = [
+  { k: "brush",     name: "刷单返利" },
+  { k: "service",   name: "冒充客服快递理赔" },
+  { k: "authority", name: "冒充公检法熟人" },
+  { k: "job",       name: "兼职招聘校园贷" },
+  { k: "love",      name: "情感诈骗" },
+  { k: "link",      name: "钓鱼链接假冒网站" },
+  { k: "other",     name: "其他" },
+];
+
 const DIMENSIONS = [
   { key: "domain",   name: "域名甄别" },
   { key: "psych",    name: "话术免疫" },
