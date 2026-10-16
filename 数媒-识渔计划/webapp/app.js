@@ -925,6 +925,242 @@ function buildPoster() {
   $("#poster-mask").classList.remove("hidden");
 }
 
+/* ============ 社区投稿（独立模块：不改动游戏状态与既有存档 key） ============ */
+const CM_DRAFT = "SHIYU_COMMUNITY_DRAFT";  // 草稿独立 key：与 shiyu_v3 / shiyu_wrong / shiyu_daily / shiyu_ai_diag 互不影响
+const CM_CHAN = {
+  form: { label: "问卷",              btn: "#c-qr"   },
+  mail: { label: "本地复制（邮箱）",   btn: "#c-mail" },
+};
+let CM = { type: "", scam: "", text: "", agree: false, copied: false };
+
+/* 草稿读写：单独 key，清空训练数据不会误删草稿（见 init() 中 #b-reset 处注释） */
+function cmRead() {
+  try { return JSON.parse(localStorage.getItem(CM_DRAFT) || "null"); } catch (e) { return null; }
+}
+function cmSave() {
+  try {
+    localStorage.setItem(CM_DRAFT, JSON.stringify({
+      type: CM.type, scam: CM.scam, text: CM.text, agree: CM.agree,
+      copied: CM.copied, at: Date.now(),
+    }));
+  } catch (e) {}
+}
+function cmClear() { try { localStorage.removeItem(CM_DRAFT); } catch (e) {} }
+
+/* 计数 / 提示 / 单选高亮 */
+function cmCount() {
+  const t = CM.text, n = t.length;
+  $("#c-count").textContent = n + " / 500";
+  $("#c-count").classList.toggle("over", n > 500);
+}
+function cmNote(el, msg, opts) {
+  const o = opts || {};
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  el.classList.toggle("ok", !!o.ok);
+  el.classList.toggle("bad", !o.ok);
+  el.classList.remove("shake");
+  if (msg) { void el.offsetWidth; el.classList.add("shake"); }
+}
+function cmHideNote(el) { el.classList.add("hidden"); el.classList.remove("shake"); }
+
+/* 单选组渲染：带图标的视觉单选框 + JS 显式 .on 类（不依赖 :has()，兼容旧浏览器） */
+function cmBuildGroup(sel, list, name, key) {
+  const box = $(sel);
+  box.innerHTML = list.map((o) =>
+    '<label class="c-opt"><input type="radio" name="' + name + '" value="' + o.k + '"><span>' + o.name + "</span></label>"
+  ).join("");
+  Array.from(box.querySelectorAll("input")).forEach((inp) => {
+    inp.onchange = () => { CM[key] = inp.value; cmMarkGroup(sel); cmHideNote($("#c-note")); cmSync(); cmSave(); };
+  });
+}
+function cmMarkGroup(sel) {
+  Array.from($(sel).querySelectorAll(".c-opt")).forEach((lb) => {
+    lb.classList.toggle("on", !!lb.querySelector("input").checked);
+  });
+}
+
+/* 表单→按钮联动：授权勾选 + 三项填写齐才解禁（未勾选/未填满一律置灰） */
+function cmSync() {
+  const ok = CM.agree && !!CM.type && !!CM.scam && CM.text.trim().length > 0;
+  $("#c-submit").disabled = !ok;
+}
+function cmRestore() {
+  const d = cmRead();
+  if (!d) return;
+  CM.type = d.type || ""; CM.scam = d.scam || ""; CM.text = d.text || ""; CM.agree = !!d.agree;
+  CM.copied = !!d.copied;
+  if (CM.text.length > 500) CM.text = CM.text.slice(0, 500);
+  $("#c-text").value = CM.text;
+  $("#c-agree").checked = CM.agree;
+  [["#c-type", "type"], ["#c-scam", "scam"]].forEach(([sel, k]) => {
+    if (!CM[k]) return;
+    const inp = $(sel).querySelector('input[value="' + CM[k] + '"]');
+    if (inp) inp.checked = true;
+  });
+  cmMarkGroup("#c-type"); cmMarkGroup("#c-scam");
+  cmCount(); cmSync();
+}
+
+/* 投稿文本：两个渠道版本仅「提交渠道」一行不同，其余完全一致 */
+function cmTime() {
+  const d = new Date(), p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function cmLabel(list, k) {
+  const f = list.filter((o) => o.k === k)[0];
+  return f ? f.name : "其他";
+}
+function cmBuildText(channel) {
+  return [
+    "【识渔计划·社区投稿】",
+    "时间：" + cmTime(),
+    "类型：" + cmLabel(FB_TYPES, CM.type),
+    "骗局类别：" + cmLabel(FB_SCAMS, CM.scam),
+    "——————",
+    CM.text.trim().slice(0, 500),
+    "——————",
+    "提交渠道：" + (CM_CHAN[channel] ? CM_CHAN[channel].label : channel),
+  ].join("\n");
+}
+
+/* 剪贴板：三级降级，任何情况下都不直接报错 */
+function cmCopy(text) {
+  let p = null;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) p = navigator.clipboard.writeText(text);
+  } catch (e) { p = null; }
+  if (!p || typeof p.then !== "function") return Promise.resolve(cmCopyLegacy(text));
+  return p.then(() => "clipboard").catch(() => cmCopyLegacy(text));
+}
+function cmCopyLegacy(text) {           // 回退①：隐藏 textarea + execCommand
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "readonly");
+  ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+  document.body.appendChild(ta);
+  let ok = false;
+  try {
+    ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+    ok = document.execCommand("copy");
+  } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  if (ok) return "legacy";
+  cmManual(text);                        // 回退②：露出文本框让用户手动复制
+  return "manual";
+}
+function cmManual(text) {                // 复制不可用时的手动通道（只出现提示，不抛错）
+  const alt = $("#c-alt");
+  alt.value = text;
+  alt.classList.remove("hidden");
+  try { alt.focus(); alt.select(); } catch (e) {}
+}
+function cmShowCopied(method) {
+  const el = $("#c-copy-ok");
+  if (method === "manual") {
+    el.classList.add("manual");
+    el.textContent = "剪贴板不可用，请手动复制下方文本框内容（Ctrl/⌘ + C）";
+  } else {
+    el.classList.remove("manual");
+    el.textContent = "已复制到剪贴板";
+  }
+}
+
+/* 主按钮：只做校验，通过后同时展开两个渠道按钮 */
+function cmSubmit() {
+  cmSync();   // 先按当前填写情况重算按钮状态（早退路径下也保持一致）
+  if (!CM.type)     { cmNote($("#c-note"), "请先选择内容类型");   cmMarkGroup("#c-type"); return; }
+  if (!CM.scam)     { cmNote($("#c-note"), "请先选择骗局类别");   cmMarkGroup("#c-scam"); return; }
+  if (!CM.text.trim()) { cmNote($("#c-note"), "请填写描述内容");  $("#c-text").focus();   return; }
+  if (!CM.agree)    { cmNote($("#c-note"), "请先勾选自愿声明与授权"); return; }
+  cmHideNote($("#c-note"));
+  CM.copied = false; cmSave();
+  $("#c-copy-ok").classList.add("hidden");
+  $("#c-preview").textContent = "";
+  $("#c-alt").classList.add("hidden");
+  cmHideNote($("#c-note2"));
+  $("#c-panel").classList.remove("hidden");
+  $("#c-panel").scrollIntoView({ block: "nearest" });
+}
+
+/* 渠道①：问卷 —— 先复制「问卷」版文本，再由用户点击触发打开（页面本身不自动跳转） */
+function cmChannelForm() {
+  const txt = cmBuildText("form");
+  cmCopy(txt).then((m) => {
+    cmShowCopied(m);
+    $("#c-preview").textContent = txt;
+    $("#c-panel").classList.remove("hidden");
+    let opened = null;
+    try { opened = window.open(FEEDBACK_FORM_URL, "_blank", "noopener"); } catch (e) { opened = null; }
+    cmNote($("#c-note2"), opened
+      ? "已复制「问卷」版文本（含提交渠道字段）并打开问卷，粘贴到问卷最后即可。"
+      : "已复制「问卷」版文本。浏览器拦截了新窗口，请手动访问 " + FEEDBACK_FORM_URL + " 粘贴提交。", { ok: true });
+    CM.copied = true; cmSave();
+  });
+}
+
+/* 渠道②：邮箱 —— 先复制「本地复制（邮箱）」版文本，再唤起系统邮件客户端 */
+function cmChannelMail() {
+  const txt = cmBuildText("mail");
+  cmCopy(txt).then((m) => {
+    cmShowCopied(m);
+    $("#c-preview").textContent = txt;
+    $("#c-panel").classList.remove("hidden");
+    cmNote($("#c-note2"), "已复制「邮箱」版文本并唤起系统邮件客户端（正文已自动填入）。", { ok: true });
+    CM.copied = true; cmSave();
+    const url = "mailto:" + FEEDBACK_EMAIL +
+      "?subject=" + encodeURIComponent("识渔计划·社区投稿") +
+      "&body=" + encodeURIComponent(txt);
+    try { window.location.href = url; } catch (e) {}
+  });
+}
+
+/* 完成提交：清空草稿并复位表单 */
+function cmDone() {
+  cmClear();
+  CM = { type: "", scam: "", text: "", agree: false, copied: false };
+  $("#c-text").value = ""; $("#c-agree").checked = false;
+  Array.from(document.querySelectorAll('#c-type input, #c-scam input')).forEach((i) => (i.checked = false));
+  cmMarkGroup("#c-type"); cmMarkGroup("#c-scam");
+  cmCount(); cmSync();
+  $("#c-panel").classList.add("hidden");
+  cmHideNote($("#c-note"));
+  cmNote($("#c-note"), "投稿已完成，感谢分享。草稿已清空。", { ok: true });
+}
+
+function cmReset() {
+  CM = { type: "", scam: "", text: "", agree: false, copied: false };
+  cmClear();
+  $("#c-text").value = ""; $("#c-agree").checked = false;
+  Array.from(document.querySelectorAll('#c-type input, #c-scam input')).forEach((i) => (i.checked = false));
+  cmMarkGroup("#c-type"); cmMarkGroup("#c-scam");
+  cmCount(); cmSync();
+  $("#c-panel").classList.add("hidden");
+  $("#c-alt").classList.add("hidden");
+  cmHideNote($("#c-note")); cmHideNote($("#c-note2"));
+}
+
+function cmInit() {
+  const ta = $("#c-text");
+  if (!ta || typeof FB_TYPES === "undefined") return;
+  cmBuildGroup("#c-type", FB_TYPES, "c-type", "type");
+  cmBuildGroup("#c-scam", FB_SCAMS, "c-scam", "scam");
+  ta.oninput = () => {
+    if (ta.value.length > 500) ta.value = ta.value.slice(0, 500);   // 防粘贴超长
+    CM.text = ta.value; cmCount(); cmHideNote($("#c-note")); cmSync(); cmSave();
+  };
+  $("#c-agree").onchange = (e) => { CM.agree = e.target.checked; cmHideNote($("#c-note")); cmSync(); cmSave(); };
+  $("#c-submit").onclick = () => cmSubmit();
+  $("#c-qr").onclick = () => cmChannelForm();
+  $("#c-mail").onclick = () => cmChannelMail();
+  $("#c-done").onclick = () => cmDone();
+  // 切走 / 误退前再存一次，保证草稿不丢
+  document.addEventListener("visibilitychange", () => { if (document.hidden) cmSave(); });
+  window.addEventListener("pagehide", () => cmSave());
+  cmRestore();
+  cmSync();   // 无草稿的首次进入也同步一次，保证按钮与勾选状态一致
+}
+
 /* ---------- 画像 / 首页 / 初始化 ---------- */
 function renderProfile() {
   const b = $("#p-body");
@@ -970,8 +1206,9 @@ function init() {
   $("#b-start").onclick = () => startGame();
   $("#b-attack").onclick = () => startAttack(true);
   $("#b-profile").onclick = () => { renderProfile(); show("profile"); };
+  $("#b-community").onclick = () => show("community");
   $("#b-about").onclick = () => show("about");
-  ["b-home1", "b-home3", "r-home", "p-home"].forEach((id) => {
+  ["b-home1", "b-home3", "r-home", "p-home", "c-home"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.onclick = () => { Officer.cancel(); renderHome(); show("home"); };
   });
@@ -990,9 +1227,11 @@ function init() {
   $("#poster-close").onclick = () => $("#poster-mask").classList.add("hidden");
   refreshDailySub();
   agentInit();
+  cmInit();
   $("#b-reset").onclick = () => {
     if (!confirm("确认清空全部战绩与画像？")) return;
     try { localStorage.removeItem(LS_KEY); } catch (e) {}
+    // 注意：社区投稿草稿使用独立 key（CM_DRAFT），此处刻意不清除，避免误删用户投稿草稿
     if (typeof Analyst !== "undefined") { try { localStorage.removeItem(Analyst.LS_CACHE); } catch (e) {} }
     S = { dims: freshDims(), missCat: {}, report: null, atk: { round: 1, mode: "genes", slots: {}, history: [], best: null, freeHits: {}, freeText: "", sl: { stealth: 50, aggro: 50, volume: 30 } } };
     renderProfile(); renderHome();
