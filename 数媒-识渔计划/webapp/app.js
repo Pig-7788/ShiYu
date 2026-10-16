@@ -132,31 +132,82 @@ const OFFICER_QA = [
 /* ---------- 工具函数 ---------- */
 function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
 function plainText(q) { return q.parts.map((p) => (p.t === "p" ? p.html.replace(/<[^>]+>/g, "") : "")).join(""); }
+/* 正文内 <span data-el="…"> 文本锚点：解析片段文本，让证物标签/清白之证显示真实文案（不再回退为类别键） */
+const EL_TEXT_CACHE = new WeakMap();
+function elTextMap(q) {
+  let map = EL_TEXT_CACHE.get(q);
+  if (map) return map;
+  map = {};
+  (q.parts || []).forEach((p) => {
+    if (typeof p.html !== "string" || p.html.indexOf("data-el=") < 0) return;
+    try {
+      const doc = new DOMParser().parseFromString("<div>" + p.html + "</div>", "text/html");
+      doc.querySelectorAll("[data-el]").forEach((el) => {
+        const key = el.getAttribute("data-el");
+        const txt = (el.textContent || "").replace(/\s+/g, " ").trim();
+        if (key && txt) map[key] = txt;
+      });
+    } catch (e) {}
+  });
+  EL_TEXT_CACHE.set(q, map);
+  return map;
+}
 function partOf(q, id) {
   if (id === q.meta.addrId) return { t: "addr", text: q.meta.addr };
   if (id === q.meta.urlId) return { t: "url", text: q.meta.url };
   const p = (q.parts || []).find((x) => x.id === id);
-  if (!p) return null;
-  return { t: p.t, text: p.text || plainText({ parts: [p] }) };
+  if (p) return { t: p.t, text: p.text || plainText({ parts: [p] }) };
+  const txt = elTextMap(q)[id];
+  if (txt) return { t: "text", text: txt };
+  return null;
 }
-function chipLabel(q, r) {
-  const p = partOf(q, r.target);
-  if (!p) return r.category;
+function partLabel(p) {
+  if (!p) return null;
   if (p.t === "addr") return "发件域名 " + String(p.text).split("@").pop();
   if (p.t === "url") return "地址栏 " + p.text;
   if (p.t === "link") return "链接 " + p.text;
   if (p.t === "attach") return "附件 " + p.text;
   if (p.t === "qr") return "二维码";
   if (p.t === "field") return "表单 " + p.text;
+  if (p.t === "text") return "正文「" + String(p.text).slice(0, 14) + "」";
   return String(p.text).slice(0, 14);
+}
+function chipLabel(q, r) {
+  const p = partOf(q, r.target);
+  return p ? partLabel(p) : r.category;
+}
+
+/* 正常样本的教学说明（legitNotes）→ 可渲染的 {label, note} 列表 */
+function legitNotesOf(q) {
+  return (q.legitNotes || []).map((n) => {
+    const p = n.target ? partOf(q, n.target) : null;
+    return { label: p ? partLabel(p) : "整体判断", note: n.note };
+  });
+}
+
+/* 误报（把正常样本判成钓鱼）→ 落到对应能力维度，驱动画像中的 fa 扣分 */
+function dimOfTarget(q, target) {
+  if (!target) return "psych";
+  const p = partOf(q, target);
+  if (!p) return null;
+  return FA_DIM_BY_PARTTYPE[p.t] || "psych";
+}
+function recordFalseAlarm(q) {
+  const notes = q.legitNotes && q.legitNotes.length ? q.legitNotes : [{ target: null }];
+  const dims = new Set();
+  notes.forEach((n) => { const d = dimOfTarget(q, n.target); if (d) dims.add(d); });
+  if (!dims.size) dims.add("psych");
+  dims.forEach((d) => { S.dims[d].fa++; });
 }
 
 /* ============ 拦截战（拖拽分拣） ============ */
+/* 波次只引用 data.js 的 CAMPAIGN，逻辑层不再重复硬编码题目 id（按 AGENTS.md：加题/改题只动 data.js）。
+   key 供报告页定位前测/后测，避免再出现「第 0 波 / 第 3 波」这类隐式下标。 */
 const WAVES = [
-  { name: "第一波 · 前测侦察", ids: ["em1", "em3", "sms1", "lp3", "em4"], reveal: false },
-  { name: "第二波 · 近海拦截", ids: ["em2", "sms3", "sms2", "em5", "lp1"], reveal: true },
-  { name: "第三波 · 深水区", ids: ["sms4", "lp2", "em6", "lp4", "em7"], reveal: true },
-  { name: "第四波 · 终局后测", ids: ["sms5", "em9", "lp5", "sms6", "em8"], reveal: false },
+  { key: "pretest",  name: "第一波 · 前测侦察", ids: CAMPAIGN.pretest,           reveal: false },
+  { key: "train-a",  name: "第二波 · 近海拦截", ids: CAMPAIGN.train.slice(0, 5), reveal: true },
+  { key: "train-b",  name: "第三波 · 深水区",   ids: CAMPAIGN.train.slice(5),    reveal: true },
+  { key: "posttest", name: "第四波 · 终局后测", ids: CAMPAIGN.posttest,          reveal: false },
 ];
 let G = null; // 战局状态
 function startGame() {
@@ -277,7 +328,11 @@ function sortCard(side) {
     G.combo = 0; G.lives = Math.max(0, G.lives - 15);
     SFX.play("bad");
     $("#v-game").classList.add("shake"); setTimeout(() => $("#v-game").classList.remove("shake"), 400);
-    badge("bad", side === null ? "⏱ 超时漏网" : "✗ 分拣错误");
+    const falseAlarm = !q.phishing && side !== null; // 误报：把正常样本判成钓鱼
+    if (side === null) badge("bad", "⏱ 超时漏网");
+    else if (falseAlarm) badge("bad", "⚠ 误报 · 正常样本");
+    else badge("bad", "✗ 漏判 · 钓鱼样本");
+    if (falseAlarm) recordFalseAlarm(q);
     logWrong(q.id, null);
   }
   refreshHud();
@@ -286,7 +341,7 @@ function sortCard(side) {
   setTimeout(() => {
     if (w.reveal) {
       const b = $("#g-stage .g-badge");
-      if (b) b.innerHTML += '<div style="font-size:12px;font-weight:600;margin-top:4px">真实身份：' + (q.phishing ? "钓鱼样本" : "正常样本") + "</div>";
+      if (b) b.innerHTML += '<div style="font-size:12px;font-weight:600;margin-top:4px">真实身份：' + (q.phishing ? "钓鱼样本" : "正常样本 · 清白") + "</div>";
     }
     G.cardIdx++;
     setTimeout(nextCard, w.reveal ? 850 : 420);
@@ -317,8 +372,9 @@ let DM = null;
 function startDismantle() {
   const w = wave();
   const phish = w.ids.map((id) => SAMPLE_MAP[id]).filter((q) => q.phishing);
-  if (!phish.length || !w.reveal || G.daily) { endWave(); return; }
-  DM = { list: phish, chips: [], placed: 0 };
+  const legit = w.ids.map((id) => SAMPLE_MAP[id]).filter((q) => !q.phishing);
+  if (!phish.length || !w.reveal || G.daily) { endWave(); return; }   // G.daily：每日挑战不走拆解台（保留本仓库每日挑战机制）
+  DM = { list: phish, legit, chips: [], placed: 0 };
   phish.forEach((q) => q.redflags.forEach((r) => DM.chips.push({ q, r, tries: 0, done: false })));
   const slotCats = [...new Set(DM.chips.map((c) => c.r.category))];
   $("#g-phase").textContent = w.name + " · 拆解台";
@@ -418,16 +474,24 @@ function finishDismantle() {
     "</div><div class=\"f-d\">" + esc(chipLabel(c.q, c.r)) + "：" + esc(c.r.explain) + "</div></div>").join("");
   G.score += DM.chips.filter((c) => c.tries === 1).length * 50;
   refreshHud();
+  const legitHtml = DM.legit && DM.legit.length
+    ? '<div class="legit-card"><div class="legit-head">清 白 之 证 · 本波正常样本为什么清白</div>' +
+      DM.legit.map((q) => '<div class="legit-item"><div class="lg-scene">' + esc(q.scene) + '</div><ul class="lg-notes">' +
+        legitNotesOf(q).map((n) => "<li><b>" + esc(n.label) + "</b>：" + esc(n.note) + "</li>").join("") + "</ul></div>").join("") +
+      "</div>"
+    : "";
   $("#g-stage").innerHTML = `
     <div class="xp-head ${missed.length ? "bad" : "good"}">拆 解 判 定</div>
     <div class="officer-wrap" id="officer"></div>
     <div class="dm-verdict">${html}</div>
+    ${legitHtml}
     <button class="btn primary" id="dm-next" style="text-align:center">下一波 →</button>`;
   const lines = [missed.length
     ? "这波拆解有 " + missed.length + " 个证物放错了槽。看判 定，每个证物我都写了它属于哪类、为什么。"
     : "全部首放命中，漂亮。这一波的破绽语法你已经掌握了。"];
   const topMiss = Object.entries(S.missCat).sort((a, b) => b[1] - a[1])[0];
   if (topMiss && missed.length) lines.push("目前你最常漏的是「" + CATEGORY_NAME[topMiss[0]] + "」：" + DIM_ADVICE[DIM_OF_CATEGORY[topMiss[0]]]);
+  if (DM.legit && DM.legit.length) lines.push("别忘了另一面：本波还有 " + DM.legit.length + " 个正常样本，「清白之证」里写了它们为什么可信——不漏判、也不误伤，才算练到位。");
   Officer.play(lines);
   $("#dm-next").onclick = endWave;
 }
@@ -448,16 +512,41 @@ function normalizeDims() {
   return out;
 }
 function rankOf(avg) { return RANKS.find((r) => avg >= r.min).name; }
-function accOf(waveIdx) {
-  const a = G ? G.answers[waveIdx] : [];
+/* 某波识别率：按波次 key 在本局实际波次里定位（题目内容全部来自 data.js 的 CAMPAIGN） */
+function accOf(key) {
+  const list = (G && G.waves) || WAVES;
+  const idx = list.findIndex((w) => w.key === key);
+  if (idx < 0) return null;
+  const a = (G && G.answers[idx]) || [];
   if (!a.length) return null;
   return Math.round((100 * a.filter((x) => x.correct).length) / a.length);
 }
+/* 汇总本局遇到的全部正常样本：用于「清白之证」复盘与误报统计（波次取本局实际使用的 G.waves） */
+function buildLegitReview() {
+  const seen = new Set(), out = [];
+  (G && G.waves ? G.waves : WAVES).forEach((w) => {
+    w.ids.forEach((id) => {
+      if (seen.has(id)) return;
+      const q = SAMPLE_MAP[id];
+      if (!q || q.phishing) return;
+      seen.add(id);
+      const log = (G.sortLog || []).find((l) => l.qid === id);
+      out.push({
+        id: q.id, scene: q.scene, notes: legitNotesOf(q),
+        mistaken: !!(log && log.kind === "wrong"),
+        timeout: !!(log && log.kind === "timeout"),
+      });
+    });
+  });
+  return out;
+}
+function faTotal() { return DIMENSIONS.reduce((s, d) => s + (S.dims[d.key].fa || 0), 0); }
 function finishGame() {
-  const pre = accOf(0), post = accOf(3);
+  const pre = accOf("pretest"), post = accOf("posttest");
   const dimsN = normalizeDims();
   const avg = Math.round(DIMENSIONS.reduce((s, d) => s + dimsN[d.key], 0) / DIMENSIONS.length);
-  S.report = { pre, post, dims: dimsN, avg, rank: rankOf(avg), score: G.score, bestCombo: G.bestCombo, at: Date.now() };
+  S.report = { pre, post, dims: dimsN, avg, rank: rankOf(avg), score: G.score, bestCombo: G.bestCombo,
+               legit: buildLegitReview(), fa: faTotal(), at: Date.now() };
   store();
   renderReport(); show("report");
 }
@@ -474,8 +563,25 @@ function renderReport() {
     : "<li>全部破绽均被首放命中，表现出色！</li>";
   const weak = DIMENSIONS.slice().sort((a, b) => r.dims[a.key] - r.dims[b.key]).slice(0, 2);
   $("#r-advice").innerHTML = weak.map((d) => "<li><b>" + d.name + "（" + r.dims[d.key] + "）</b>：" + DIM_ADVICE[d.key] + "</li>").join("");
+  const lg = r.legit || [];
+  const mistaken = lg.filter((x) => x.mistaken).length;
+  const lcard = $("#r-legit-card");
+  if (lcard) lcard.style.display = lg.length ? "" : "none";
+  if (lg.length) {
+    $("#r-legit-sub").textContent = mistaken
+      ? "本局你误把 " + mistaken + " 个正常样本判成了钓鱼。误报和漏判一样会拉低画像——下面每一条都告诉你它为什么清白："
+      : "本局你没有误伤正常样本。下面复习它们为什么是清白的（不漏判、也不误伤，才算练到位）：";
+    $("#r-legit").innerHTML = lg.map((x) => {
+      const tag = x.mistaken ? '<span class="lg-tag bad">误报</span>'
+        : x.timeout ? '<span class="lg-tag warn">超时未判</span>'
+        : '<span class="lg-tag ok">判断正确</span>';
+      return "<li><b>" + esc(x.scene) + "</b> " + tag + "<br>" +
+        x.notes.map((n) => "· <b>" + esc(n.label) + "</b>：" + esc(n.note)).join("<br>") + "</li>";
+    }).join("");
+  }
   const extra = $("#r-extra");
-  if (extra && r.score != null) extra.textContent = "战绩：" + r.score + " 分 · 最高连击 x" + (r.bestCombo || 0) + " · 数据完整度 " + (G ? G.lives : "--") + "%";
+  if (extra && r.score != null) extra.textContent = "战绩：" + r.score + " 分 · 最高连击 x" + (r.bestCombo || 0) +
+    " · 数据完整度 " + (G ? G.lives : "--") + "%" + (lg.length ? " · 误报 " + mistaken + "/" + lg.length : "");
   /* AI 训练诊断：命中本轮缓存则直接展示，否则流式生成（云端→规则版兜底见 analyst.js） */
   if (typeof Analyst !== "undefined") {
     const rb = $("#ai-regen");
@@ -1196,6 +1302,7 @@ function renderProfile() {
     </div>
     <div class="radar-wrap"><canvas id="radar-p" width="320" height="300"></canvas></div>
     <div class="card"><h3>维度得分</h3><ul class="advice">${DIMENSIONS.map((d) => "<li><b>" + d.name + "</b>：" + dims[d.key] + " / 100</li>").join("")}</ul></div>
+    ${r.legit && r.legit.length ? '<p style="text-align:center;color:var(--txt-dim);font-size:12px">正常样本误报：' + r.legit.filter((x) => x.mistaken).length + " / " + r.legit.length + "</p>" : ""}
     ${S.atk && S.atk.best != null ? '<p style="text-align:center;color:var(--txt-dim);font-size:12px">造浪者最佳逃脱检出率：' + S.atk.best + "%</p>" : ""}
     ${wrongBookHTML()}`;
   drawRadar($("#radar-p"), dims);

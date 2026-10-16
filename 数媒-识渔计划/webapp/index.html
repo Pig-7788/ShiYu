@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>识渔计划 · 反钓鱼攻防训练营</title>
-<link rel="stylesheet" href="styles.css?v=10">
+<link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body>
 <div class="wm">教学模拟 DEMO</div>
@@ -59,6 +59,10 @@
       </div>
       <div class="card"><h3>最需要补的课</h3><ul class="topmiss advice" id="r-topmiss"></ul></div>
       <div class="card"><h3>个性化建议</h3><ul class="advice" id="r-advice"></ul></div>
+      <div class="card" id="r-legit-card"><h3>清白之证 · 正常样本复盘</h3>
+        <p class="legit-sub" id="r-legit-sub"></p>
+        <ul class="advice" id="r-legit"></ul>
+      </div>
       <button class="btn danger" id="b-report-attack"><b>去造浪者模式</b><small>从攻击者视角再练一轮</small></button>
       <button class="btn" id="b-poster"><b>生成战绩海报</b><small>段位+雷达+战绩 · 保存图片分享</small></button>
     </section>
@@ -156,7 +160,7 @@
 </div>
 <!-- 版本号约定：改了哪个静态资源就把它的 ?v=N 加一（离线演示与静态托管无构建哈希，只能靠这个破缓存） -->
 <script src="data.js?v=6"></script>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 <script src="config.js?v=6"></script>
 <script src="agent.js?v=8"></script>
 <script src="analyst.js?v=1"></script>
