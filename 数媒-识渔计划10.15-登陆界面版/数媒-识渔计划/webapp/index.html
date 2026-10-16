@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>识渔计划 · 反钓鱼攻防训练营</title>
+<link rel="stylesheet" href="styles.css?v=9">
+</head>
+<body class="locked">
+<div class="wm">教学模拟 DEMO</div>
+
+<!-- ============ 登录 / 注册（未登录时全屏遮罩，见 auth.js） ============ -->
+<div id="auth-gate">
+  <div class="gate-card">
+    <div class="gate-logo">识渔<span>计划</span></div>
+    <div class="gate-sub">SHIYU · 反钓鱼攻防训练营</div>
+    <div class="gate-tabs">
+      <span class="gtab on" data-t="login">登 录</span>
+      <span class="gtab" data-t="reg">注 册</span>
+    </div>
+
+    <div class="gate-pane" id="gate-login">
+      <label for="lg-user">用户名</label>
+      <input id="lg-user" autocomplete="username" placeholder="请输入用户名">
+      <label for="lg-pass">密码</label>
+      <input id="lg-pass" type="password" autocomplete="current-password" placeholder="请输入密码">
+      <button class="btn primary" id="lg-go"><b>登 录</b><small>学员看训练报告 · 管理员进数据观测台</small></button>
+      <div class="gate-msg" id="lg-msg"></div>
+    </div>
+
+    <div class="gate-pane hidden" id="gate-reg">
+      <label for="rg-user">用户名</label>
+      <input id="rg-user" autocomplete="username" placeholder="3–16 位字母 / 数字 / 下划线">
+      <label for="rg-nick">昵称（选填）</label>
+      <input id="rg-nick" placeholder="显示在训练数据看板里">
+      <label for="rg-pass">密码</label>
+      <input id="rg-pass" type="password" autocomplete="new-password" placeholder="至少 6 位">
+      <label for="rg-pass2">确认密码</label>
+      <input id="rg-pass2" type="password" autocomplete="new-password" placeholder="再输入一次">
+      <button class="btn primary" id="rg-go"><b>注 册 并 登 录</b><small>无需邮箱手机，注册即可开始训练</small></button>
+      <div class="gate-msg" id="rg-msg"></div>
+    </div>
+
+    <p class="gate-foot">
+      账号与训练数据<b>仅保存在本机浏览器</b>（localStorage），不上传服务器、不收集个人信息。<br>
+      管理员账号用于查看班级训练数据、维护题库与波次。
+    </p>
+  </div>
+</div>
+
+<div id="wrap">
+  <header>
+    <div class="logo">识渔<span>计划</span></div>
+    <div class="sub">SHIYU · 反钓鱼攻防训练营</div>
+    <div class="user-chip" id="user-chip"></div>
+  </header>
+  <main id="app">
+
+    <section id="v-home" class="view active">
+      <div class="hero">
+        <div class="fish" id="hero-pet"></div>
+        <p>信息之海里，钓鱼攻击最可怕的地方是它看起来正常。<br>
+        在这里反复练——判断、圈出破绽、听 AI 讲解，<br>直到识别成为条件反射。</p>
+      </div>
+      <div class="rankline" id="home-rank"></div>
+      <button class="btn primary" id="b-start"><b>拦截战 · 开始</b><small>拖拽分拣钓鱼消息 → 拆解台归类证物 → 出具风险画像</small></button>
+      <button class="btn danger" id="b-attack"><b>造浪者 · 组装实验室</b><small>拖卡装配+滑杆调参挑战AI防线，或自由撰写一封</small></button>
+      <button class="btn" id="b-daily"><b>每日挑战</b><small id="b-daily-sub">按日期生成新题 · 冲刺个人最佳与连胜</small></button>
+      <button class="btn" id="b-profile"><b>我的画像</b><small>五维能力雷达 · 段位 · 错题本</small></button>
+      <button class="btn admin hidden" id="b-admin"><b>数据观测台 · 管理员</b><small>训练数据看板 · 题库与波次维护 · 成绩导出</small></button>
+    </section>
+
+    <section id="v-game" class="view">
+      <div class="q-head"><button class="home-pill" id="g-home">⌂ 首页</button><span class="phase" id="g-phase"></span><span class="timer" id="g-timer-txt"></span></div>
+      <div class="g-top">
+        <span class="lives" id="g-lives-wrap" title="数据完整度"><i id="g-lives" style="width:100%"></i></span>
+        <span class="g-score" id="g-score">0</span>
+        <span class="g-combo" id="g-combo"></span>
+        <span class="grow"></span>
+        <span id="g-wave"></span>
+      </div>
+      <div id="g-stage"></div>
+    </section>
+
+    <section id="v-report" class="view">
+      <div class="q-head"><button class="home-pill" id="r-home">⌂ 首页</button></div>
+      <div class="xp-head good">训 练 报 告</div>
+      <div class="rep-grid">
+        <div class="rep-box"><div class="v" id="r-pre">--</div><div class="k">前测识别率</div></div>
+        <div class="rep-box"><div class="v up" id="r-post">--</div><div class="k">后测识别率</div></div>
+        <div class="rep-box"><div class="v" id="r-rank">--</div><div class="k">段位</div></div>
+      </div>
+      <p id="r-extra" style="text-align:center;color:var(--amber);font-size:12.5px;margin:2px 0"></p>
+      <div class="card">
+        <h3>AI 训练诊断 <span class="ai-src" id="ai-src">AI 生成中…</span><button class="ai-regen" id="ai-regen">↻ 重新诊断</button></h3>
+        <div class="ai-body" id="ai-body"></div>
+      </div>
+      <div class="card"><h3>五维能力画像</h3>
+        <div class="radar-wrap"><canvas id="radar-report" width="320" height="300"></canvas></div>
+      </div>
+      <div class="card"><h3>最需要补的课</h3><ul class="topmiss advice" id="r-topmiss"></ul></div>
+      <div class="card"><h3>个性化建议</h3><ul class="advice" id="r-advice"></ul></div>
+      <button class="btn danger" id="b-report-attack"><b>去造浪者模式</b><small>从攻击者视角再练一轮</small></button>
+      <button class="btn" id="b-poster"><b>生成战绩海报</b><small>段位+雷达+战绩 · 保存图片分享</small></button>
+    </section>
+
+    <section id="v-attack" class="view">
+      <div class="q-head"><button class="home-pill" id="a-home-btn">⌂ 首页</button><span class="phase">造浪者 · 红蓝对抗</span>
+        <span><span class="round-dots" id="a-round"></span> <button class="voice-btn" id="a-voice">🔊 语音</button></span></div>
+      <div class="card" id="a-stage"></div>
+    </section>
+
+    <section id="v-profile" class="view">
+      <div class="q-head"><button class="home-pill" id="p-home">⌂ 首页</button></div>
+      <div class="xp-head good">我 的 画 像</div>
+      <div id="p-body"></div>
+      <button class="btn" id="b-reset"><b style="color:var(--red)">清空训练数据</b><small>仅重置本账号的进度与画像</small></button>
+    </section>
+
+    <section id="v-admin" class="view">
+      <div class="q-head"><button class="home-pill" id="ad-home">⌂ 首页</button><span class="phase">数据观测台 · 管理员</span>
+        <span><button class="voice-btn" id="ad-refresh">↻ 刷新数据</button></span></div>
+      <div class="xp-head good">数 据 观 测 台</div>
+      <p class="ad-note" id="ad-data-note"></p>
+      <div class="kpi-grid" id="ad-kpis"></div>
+
+      <div class="card">
+        <h3>训练成效分析 <span class="ai-src cloud">前测 → 后测</span></h3>
+        <canvas id="ad-chart-line"></canvas>
+        <div class="chart-legend" id="ad-legend-line"></div>
+      </div>
+      <div class="card">
+        <h3>破绽漏判结构 <span class="ai-src">7 类破绽 · 拆解台</span></h3>
+        <canvas id="ad-chart-donut"></canvas>
+        <div class="chart-legend donut" id="ad-legend-donut"></div>
+      </div>
+
+      <div class="admin-tabs">
+        <span class="atab on" data-p="bank">题库编辑</span>
+        <span class="atab" data-p="waves">波次编排</span>
+        <span class="atab" data-p="users">账号管理</span>
+        <span class="atab" data-p="export">数据导出</span>
+      </div>
+
+      <div class="ad-panel" data-p="bank">
+        <div class="card">
+          <h3>自定义题库 <span class="ai-src" id="ad-bank-count">—</span></h3>
+          <p class="ad-tip">按内置 20 题的同一套 Schema 追加题目：<b>新增题目会自动进入「每日挑战」</b>；编入下方波次后也会出现在拦截战里。
+            字段以 <code>_</code> 开头视为注释，保存时自动丢弃。</p>
+          <textarea class="freebox ad-code" id="ad-bank-text" spellcheck="false"></textarea>
+          <div class="ad-btns">
+            <button class="ad-btn" id="ad-bank-tpl">插入模板</button>
+            <button class="ad-btn" id="ad-bank-check">校验 JSON</button>
+            <button class="ad-btn primary" id="ad-bank-save">保存到本机题库</button>
+            <button class="ad-btn" id="ad-bank-load">载入当前</button>
+            <button class="ad-btn danger" id="ad-bank-clear">清空自定义</button>
+          </div>
+          <div class="ad-msg" id="ad-bank-msg"></div>
+        </div>
+      </div>
+
+      <div class="ad-panel hidden" data-p="waves">
+        <div class="card">
+          <h3>拦截战波次编排</h3>
+          <p class="ad-tip">固定 4 波：<b>第 1 波 = 前测</b>、<b>第 4 波 = 后测</b>（报告页的前后测识别率取这两波）。
+            <code>reveal: true</code> 的波次分拣完会进拆解台。</p>
+          <textarea class="freebox ad-code" id="ad-wave-text" spellcheck="false"></textarea>
+          <div class="ad-btns">
+            <button class="ad-btn primary" id="ad-wave-save">保存波次</button>
+            <button class="ad-btn" id="ad-wave-reset">恢复内置默认</button>
+          </div>
+          <div class="ad-msg" id="ad-wave-msg"></div>
+        </div>
+      </div>
+
+      <div class="ad-panel hidden" data-p="users">
+        <div class="card">
+          <h3>新增账号</h3>
+          <div class="ad-form">
+            <input id="ad-new-user" placeholder="用户名 3–16 位字母/数字/下划线">
+            <input id="ad-new-nick" placeholder="昵称（选填）">
+            <input id="ad-new-pass" type="password" placeholder="初始密码 ≥6 位">
+            <select id="ad-new-role"><option value="user">学员</option><option value="admin">管理员</option></select>
+            <button class="ad-btn primary" id="ad-new-go">创建账号</button>
+          </div>
+          <div class="ad-msg" id="ad-user-msg"></div>
+        </div>
+        <div class="card">
+          <h3>账号与训练状态</h3>
+          <div class="ad-scroll"><table class="ad-table" id="ad-user-table"></table></div>
+        </div>
+      </div>
+
+      <div class="ad-panel hidden" data-p="export">
+        <div class="card">
+          <h3>数据导出 / 备份</h3>
+          <div class="ad-btns">
+            <button class="ad-btn primary" id="ad-ex-json">导出全量 JSON</button>
+            <button class="ad-btn" id="ad-ex-csv">导出成绩 CSV</button>
+          </div>
+          <p class="ad-tip">JSON 内含账号（密码仅存哈希）、题库、波次与全部训练存档，用于换机迁移或备份；CSV 为成绩汇总表，Excel 可直接打开。</p>
+          <div class="ad-msg" id="ad-ex-msg"></div>
+        </div>
+        <div class="card">
+          <h3>导入 / 恢复</h3>
+          <textarea class="freebox ad-code" id="ad-import-text" spellcheck="false" placeholder="把导出的 JSON 全文粘贴到这里，再点「覆盖导入」"></textarea>
+          <div class="ad-btns"><button class="ad-btn danger" id="ad-ex-import">覆盖导入</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="v-about" class="view about">
+      <div class="card"><h3>这是什么</h3>
+        <p>反钓鱼训练游戏：在<b>拦截战</b>里把涌来的消息拖进渔网或收件箱；在<b>拆解台</b>把破绽证物拖进类别槽；
+        在<b>造浪者组装实验室</b>拖卡调参造一封"钓鱼邮件"穿越扫描防线——或自由撰写。AI 蓝军安全官全程语音讲评，
+        最终生成五维「受骗风险画像」；管理员账号另有<b>数据观测台</b>，可查看全班训练数据、维护题库与波次。</p></div>
+      <div class="card"><h3>合规声明</h3>
+        <ul>
+          <li>全部样本均为虚构（人名、机构、域名、链接均为演示虚构），所有链接不产生真实跳转；</li>
+          <li>本平台不提供任何消息发送 / 转发能力，界面全程带“教学模拟”水印；</li>
+          <li>账号为演示级本机账号：注册仅需用户名与密码，<b>数据只保存在你自己的浏览器</b>，不上传、不收集个人信息；</li>
+          <li>高发骗术类型参考国家反诈中心公开宣传内容。</li>
+        </ul></div>
+      <div class="card"><h3>技术方案摘要</h3>
+        <ul>
+          <li>题库：场景策略模板 + 结构化破绽标注（7 类），双人审核入库，管理员可在控制台自助扩题；</li>
+          <li>判分：规则引擎（域名 / 链接 / 附件特征）+ 自建数据集训练的文本分类器；</li>
+          <li>讲解：标注字段模板渲染为主，个性化建议由大模型流式生成；</li>
+          <li>账号：每账号独立 salt + SHA-256 存哈希（不存明文），训练数据按账号隔离；管理员控制台提供 KPI 看板、成效分析与成绩导出；</li>
+          <li>本演示版为纯前端离线实现（localStorage 存档），后端化部署方案见作品开发文档。</li>
+        </ul></div>
+      <div class="card"><h3>队伍</h3><p>长春理工大学 · 计算机科学技术学院<br>［队伍名称 / 成员 / 指导教师 待定稿］</p></div>
+      <button class="btn" id="b-home3">返回首页</button>
+    </section>
+
+  </main>
+  <div id="poster-mask" class="hidden">
+    <img id="poster-img" alt="战绩海报">
+    <a id="poster-dl" download="识渔计划战绩海报.png">保存图片</a>
+    <button id="poster-close">关闭</button>
+  </div>
+  <footer>识渔计划 SHIYU · 本平台所有样本均为虚构，仅用于识别训练<br>长春理工大学 · 计算机科学技术学院（参赛作品演示）<br><button id="b-about" class="foot-link">关于本作品</button></footer>
+</div>
+<script src="data.js?v=6"></script>
+<script src="auth.js?v=1"></script>
+<script src="app.js?v=8"></script>
+<script src="config.js?v=6"></script>
+<script src="agent.js?v=9"></script>
+<script src="analyst.js?v=2"></script>
+<script src="admin.js?v=1"></script>
+</body>
+</html>
