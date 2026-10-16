@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>识渔计划 · 反钓鱼攻防训练营</title>
-<link rel="stylesheet" href="styles.css?v=8">
+<link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
 <div class="wm">教学模拟 DEMO</div>
@@ -26,6 +26,7 @@
       <button class="btn danger" id="b-attack"><b>造浪者 · 组装实验室</b><small>拖卡装配+滑杆调参挑战AI防线，或自由撰写一封</small></button>
       <button class="btn" id="b-daily"><b>每日挑战</b><small id="b-daily-sub">按日期生成新题 · 冲刺个人最佳与连胜</small></button>
       <button class="btn" id="b-profile"><b>我的画像</b><small>五维能力雷达 · 段位 · 错题本</small></button>
+      <button class="btn" id="b-community"><b>社区投稿</b><small>分享真实遭遇或防骗建议 · 问卷 / 邮箱提交</small></button>
     </section>
 
     <section id="v-game" class="view">
@@ -75,6 +76,53 @@
       <button class="btn" id="b-reset"><b style="color:var(--red)">清空训练数据</b><small>重置进度与画像</small></button>
     </section>
 
+    <section id="v-community" class="view">
+      <div class="q-head"><button class="home-pill" id="c-home">⌂ 首页</button><span class="phase">社区 · 投稿</span></div>
+      <div class="xp-head good">社 区 投 稿</div>
+
+      <p class="c-warn">⚠ 请勿填写任何真实姓名、手机号、账号、学校等个人信息——真实遭遇请只讲清手法与话术。</p>
+
+      <div class="card">
+        <h3>1 内容类型</h3>
+        <div class="c-group" id="c-type"></div>
+      </div>
+
+      <div class="card">
+        <h3>2 骗局类别</h3>
+        <div class="c-group" id="c-scam"></div>
+      </div>
+
+      <div class="card">
+        <h3>3 描述</h3>
+        <textarea class="c-textarea" id="c-text" maxlength="500" placeholder="讲讲你收到过（或差点中招）的钓鱼套路：什么由头、哪句话让你动摇、破绽在哪、你最后怎么识破的。越具体越有价值。"></textarea>
+        <div class="c-count" id="c-count">0 / 500</div>
+      </div>
+
+      <div class="card">
+        <h3>自愿声明与授权</h3>
+        <label class="c-agree">
+          <input type="checkbox" id="c-agree">
+          <span>我自愿投稿，并授权《识渔计划》将内容用于反诈教学与作品改进；我理解内容可能被公开展示，且已去除个人信息。</span>
+        </label>
+      </div>
+
+      <div class="c-note bad hidden" id="c-note"></div>
+      <button class="btn primary" id="c-submit" disabled><b>校验并生成投稿文本</b><small>通过后可选择问卷或邮箱两种渠道提交</small></button>
+
+      <div id="c-panel" class="hidden">
+        <div class="c-copy-ok" id="c-copy-ok">已复制到剪贴板</div>
+        <pre class="c-preview" id="c-preview"></pre>
+        <div class="c-chan">
+          <button class="btn primary" id="c-qr"><b>① 打开问卷</b><small>复制「问卷」版文本并打开投稿问卷</small></button>
+          <button class="btn ghost" id="c-mail"><b>② 发送邮件</b><small>复制「邮箱」版文本并唤起系统邮件客户端</small></button>
+          <p class="c-chan-tip">问卷打不开？把剪贴板内容发送至邮箱 <button class="c-mailto" id="c-mail" type="button">kaythyleo9617@outlook.com</button> 也可提交（点地址即可复制）</p>
+        </div>
+        <textarea class="c-altbox hidden" id="c-alt" readonly rows="8"></textarea>
+        <div class="c-note ok hidden" id="c-note2"></div>
+        <button class="btn" id="c-done"><b>✓ 我已完成提交</b><small>清空草稿，感谢分享</small></button>
+      </div>
+    </section>
+
     <section id="v-about" class="view about">
       <div class="card"><h3>这是什么</h3>
         <p>反钓鱼训练游戏：在<b>拦截战</b>里把涌来的消息拖进渔网或收件箱；在<b>拆解台</b>把破绽证物拖进类别槽；
@@ -106,8 +154,9 @@
   </div>
   <footer>识渔计划 SHIYU · 本平台所有样本均为虚构，仅用于识别训练<br>长春理工大学 · 计算机科学技术学院（参赛作品演示）<br><button id="b-about" class="foot-link">关于本作品</button></footer>
 </div>
+<!-- 版本号约定：改了哪个静态资源就把它的 ?v=N 加一（离线演示与静态托管无构建哈希，只能靠这个破缓存） -->
 <script src="data.js?v=6"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 <script src="config.js?v=6"></script>
 <script src="agent.js?v=8"></script>
 <script src="analyst.js?v=1"></script>
