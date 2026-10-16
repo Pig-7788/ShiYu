@@ -1025,15 +1025,22 @@ function cmBuildText(channel) {
 }
 
 /* 剪贴板：三级降级，任何情况下都不直接报错 */
+let CM_COPY_SEQ = 0;                           // 复制代次：防止上一次复制的异步回调覆盖本次结果
+function cmResetAlt() {                        // 每次复制前清掉上一次的手动降级框，避免残留误导
+  const alt = $("#c-alt");
+  alt.value = ""; alt.classList.add("hidden");
+}
 function cmCopy(text) {
+  cmResetAlt();
+  const seq = ++CM_COPY_SEQ;
   let p = null;
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) p = navigator.clipboard.writeText(text);
   } catch (e) { p = null; }
-  if (!p || typeof p.then !== "function") return Promise.resolve(cmCopyLegacy(text));
-  return p.then(() => "clipboard").catch(() => cmCopyLegacy(text));
+  if (!p || typeof p.then !== "function") return Promise.resolve(cmCopyLegacy(text, seq));
+  return p.then(() => "clipboard").catch(() => cmCopyLegacy(text, seq));
 }
-function cmCopyLegacy(text) {           // 回退①：隐藏 textarea + execCommand
+function cmCopyLegacy(text, seq) {           // 回退①：隐藏 textarea + execCommand
   const ta = document.createElement("textarea");
   ta.value = text;
   ta.setAttribute("readonly", "readonly");
@@ -1046,7 +1053,8 @@ function cmCopyLegacy(text) {           // 回退①：隐藏 textarea + execCom
   } catch (e) { ok = false; }
   document.body.removeChild(ta);
   if (ok) return "legacy";
-  cmManual(text);                        // 回退②：露出文本框让用户手动复制
+  if (seq !== CM_COPY_SEQ) return "manual";  // 已有更新的复制操作，不再改动界面
+  cmManual(text);                            // 回退②：露出文本框让用户手动复制
   return "manual";
 }
 function cmManual(text) {                // 复制不可用时的手动通道（只出现提示，不抛错）
@@ -1077,7 +1085,7 @@ function cmSubmit() {
   CM.copied = false; cmSave();
   $("#c-copy-ok").classList.add("hidden");
   $("#c-preview").textContent = "";
-  $("#c-alt").classList.add("hidden");
+  cmResetAlt();
   cmHideNote($("#c-note2"));
   $("#c-panel").classList.remove("hidden");
   $("#c-panel").scrollIntoView({ block: "nearest" });
@@ -1112,6 +1120,16 @@ function cmChannelMail() {
       "?subject=" + encodeURIComponent("识渔计划·社区投稿") +
       "&body=" + encodeURIComponent(txt);
     try { window.location.href = url; } catch (e) {}
+  });
+}
+
+/* 副文案里的邮箱地址：点一下即复制纯地址（不含投稿文本，别与渠道版文本混用） */
+function cmCopyMail() {
+  cmCopy(FEEDBACK_EMAIL).then((m) => {
+    cmShowCopied(m);
+    $("#c-preview").textContent = FEEDBACK_EMAIL;
+    $("#c-panel").classList.remove("hidden");
+    cmNote($("#c-note2"), "已复制投稿邮箱地址：" + FEEDBACK_EMAIL + "（投稿文本请用上方渠道按钮复制）", { ok: true });
   });
 }
 
@@ -1154,6 +1172,7 @@ function cmInit() {
   $("#c-qr").onclick = () => cmChannelForm();
   $("#c-mail").onclick = () => cmChannelMail();
   $("#c-done").onclick = () => cmDone();
+  $("#c-mail").onclick = () => cmCopyMail();   // 副文案里的可点复制邮箱胶囊
   // 切走 / 误退前再存一次，保证草稿不丢
   document.addEventListener("visibilitychange", () => { if (document.hidden) cmSave(); });
   window.addEventListener("pagehide", () => cmSave());
