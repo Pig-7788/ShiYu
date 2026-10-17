@@ -33,6 +33,8 @@ function restore() {
 function show(id) {
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
   $("#v-" + id).classList.add("active");
+  const app = $("#app");
+  if (app) app.scrollTop = 0;
   window.scrollTo(0, 0);
 }
 

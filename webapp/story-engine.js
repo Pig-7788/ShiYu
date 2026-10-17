@@ -16,6 +16,7 @@ function freshStory() {
     idx: 0,               // 0-4 前五章；5 表示终章
     storyId: null,
     eventId: null,
+    page: 0,              // 当前故事正文页
     allWrong: true,       // 前五章是否所有选择都错
     wrongInStory: 0,
     choicesInStory: 0,
@@ -34,13 +35,93 @@ function storyCurrent() { return storyData(S.story.storyId); }
 function storyEvent(story, id) {
   return (story && story.events) ? story.events.find((e) => e.id === id) : null;
 }
-function storyMsgHTML(m) {
-  const sender = m.sender || "";
-  const lines = (m.lines || []).map((x) => esc(x)).join("<br>");
-  const narration = /^[（(]/.test(sender) || /系统|旁白/.test(sender);
-  return narration
-    ? '<div class="story-msg narration">' + lines + "</div>"
-    : '<div class="story-msg"><span class="who">' + esc(sender) + "</span>" + lines + "</div>";
+
+/* ---------- 故事正文分页 ---------- */
+/* 把长段落按句号切成可控的小块，避免单块超出固定文本框 */
+function storySplitText(text, maxLen) {
+  const s = String(text || "").trim();
+  if (!s) return [];
+  if (s.length <= maxLen) return [s];
+  const pieces = s.match(/[^。！？!?…；;]+[。！？!?…；;]*/g) || [s];
+  const out = [];
+  let buf = "";
+  pieces.forEach((piece) => {
+    let p = piece;
+    if (p.length > maxLen) {
+      if (buf) { out.push(buf); buf = ""; }
+      for (let i = 0; i < p.length; i += maxLen) out.push(p.slice(i, i + maxLen));
+      return;
+    }
+    if (buf && (buf + p).length > maxLen) { out.push(buf); buf = ""; }
+    buf += p;
+  });
+  if (buf) out.push(buf);
+  return out.length ? out : [s];
+}
+
+function storyTextBlocks(lines, cls, maxLen) {
+  const out = [];
+  (lines || []).forEach((text) => {
+    storySplitText(text, maxLen || 76).forEach((chunk) => {
+      out.push("<p" + (cls ? ' class="' + cls + '"' : "") + ">" + esc(chunk) + "</p>");
+    });
+  });
+  return out;
+}
+
+function storyChatBlocks(messages) {
+  const out = [];
+  (messages || []).forEach((m) => {
+    const sender = m.sender || "";
+    const narration = /^[（(]/.test(sender) || /系统|旁白/.test(sender);
+    (m.lines || []).forEach((line) => {
+      storySplitText(line, 62).forEach((chunk, i) => {
+        if (narration) {
+          out.push('<div class="story-msg narration">' + esc(chunk) + "</div>");
+        } else {
+          out.push('<div class="story-msg"><span class="who">' + esc(sender) +
+            (i ? "（续）" : "") + "</span>" + esc(chunk) + "</div>");
+        }
+      });
+    });
+  });
+  return out;
+}
+
+/* 按正文框的真实高度测量分页：先离屏逐块累加，超过高度就换页 */
+function storyPaginate(blocks, host) {
+  const list = (blocks && blocks.length) ? blocks.slice() : ['<p class="story-empty">……</p>'];
+  const limit = (host.clientHeight || 0) - 2;
+  const width = host.clientWidth || 0;
+  if (limit < 40 || width < 40) return [list];
+
+  const probe = document.createElement("div");
+  probe.className = "story-text story-probe";
+  probe.style.width = (width - 2) + "px";
+  document.body.appendChild(probe);
+
+  const pages = [];
+  let cur = [];
+  list.forEach((html) => {
+    probe.insertAdjacentHTML("beforeend", html);
+    if (probe.getBoundingClientRect().height > limit && cur.length) {
+      probe.removeChild(probe.lastElementChild);
+      pages.push(cur);
+      cur = [];
+      probe.innerHTML = "";
+      probe.insertAdjacentHTML("beforeend", html);
+    }
+    cur.push(html);
+  });
+  if (cur.length) pages.push(cur);
+  probe.remove();
+  return pages.length ? pages : [list];
+}
+
+function storyScrollTop() {
+  const app = $("#app");
+  if (app) app.scrollTop = 0;
+  window.scrollTo(0, 0);
 }
 
 function chapterPhase(st) {
@@ -101,16 +182,18 @@ const Story = {
       esc(fd ? fd.title : "终章 · 回血") + '</span><span class="st ' + fCls + '">' + fStatus + "</span></div>";
 
     $("#story-stage").innerHTML = `
-      <p class="story-lead">五个故事改编自校园里真实发生过的骗局。顺序固定，每一次选择都会被记住。</p>
-      <div class="story-chapters">${chapters}${finale}</div>
-      <div class="story-actions">
-        <button class="btn primary" data-act="${started ? "resume" : "new"}">${started ? "继续剧情" : "开始剧情"}</button>
-        ${started ? '<button class="btn" data-act="new">重新开始</button>' : ""}
-        <button class="btn" data-act="backHome">返回首页</button>
-      </div>
-      <p class="story-note">规则：五章中只要有一步没选错，第五章结束后会直接进入好结局；只有五章的所有选择全部选错，才会解锁终章「回血」。</p>`;
+      <div class="story-home">
+        <p class="story-lead">五个故事改编自校园里真实发生过的骗局。顺序固定，每一次选择都会被记住。</p>
+        <div class="story-chapters">${chapters}${finale}</div>
+        <div class="story-actions">
+          <button class="btn primary" data-act="${started ? "resume" : "new"}">${started ? "继续剧情" : "开始剧情"}</button>
+          ${started ? '<button class="btn" data-act="new">重新开始</button>' : ""}
+          <button class="btn" data-act="backHome">返回首页</button>
+        </div>
+        <p class="story-note">规则：五章中只要有一步没选错，第五章结束后会直接进入好结局；只有五章的所有选择全部选错，才会解锁终章「回血」。</p>
+      </div>`;
     this.bindStage();
-    window.scrollTo(0, 0);
+    storyScrollTop();
   },
 
   bindStage() {
@@ -133,6 +216,8 @@ const Story = {
     else if (act === "finalGood") this.finishCampaign("good");
     else if (act === "storyHome") this.renderStoryHome();
     else if (act === "backHome") { renderHome(); show("home"); }
+    else if (act === "pagePrev") this.page(-1);
+    else if (act === "pageNext") this.page(1);
   },
 
   startNew() {
@@ -157,6 +242,14 @@ const Story = {
       if (st.storyId && st.results.length) st.phase = "intro";
       else return this.renderStoryHome();
     }
+    this.renderCurrent();
+  },
+
+  /* 按当前存档阶段重绘（翻页 / 窗口尺寸变化时复用） */
+  renderCurrent() {
+    const st = S.story;
+    if (!st) return this.renderStoryHome();
+    if (st.final) return this.renderFinal(st.final);
     switch (st.phase) {
       case "intro": return this.renderIntro();
       case "event": return this.renderEvent();
@@ -170,23 +263,71 @@ const Story = {
     }
   },
 
+  /* 故事正文翻页：页码由 reader 在测量后夹紧 */
+  page(delta) {
+    const st = S.story;
+    if (!st) return;
+    st.page = Math.max(0, (st.page || 0) + delta);
+    store();
+    this.renderCurrent();
+  },
+
+  /* 统一的固定高度阅读器：正文分页，末页才显示选择/继续按钮 */
+  renderReader(opts) {
+    const st = S.story;
+    $("#st-phase").textContent = opts.phase || chapterPhase(st);
+    $("#st-progress").textContent = opts.progress || "";
+    $("#story-stage").innerHTML = `
+      <div class="story-screen">
+        <div class="story-head">
+          <div class="story-head-row">
+            <div class="story-kicker">${opts.kicker || ""}</div>
+            <button class="story-home-link" data-act="storyHome">剧情主页</button>
+          </div>
+          <h2 class="story-title">${esc(opts.title || "")}</h2>
+        </div>
+        <div class="story-reader">
+          <div class="story-text" id="story-text"></div>
+          <div class="story-pagebar" id="story-pagebar"></div>
+        </div>
+        <div class="story-actions" id="story-actions">
+          <div class="story-actions-inner">${opts.actions || ""}</div>
+          <div class="story-wait">继续阅读至最后一页</div>
+        </div>
+      </div>`;
+
+    const host = $("#story-text");
+    const pages = storyPaginate(opts.blocks || [], host);
+    const total = pages.length;
+    const page = Math.max(0, Math.min(st.page || 0, total - 1));
+    st.page = page;
+    host.innerHTML = pages[page].join("");
+
+    const bar = $("#story-pagebar");
+    bar.innerHTML = total > 1
+      ? '<button class="story-pgbtn" data-act="pagePrev"' + (page <= 0 ? " disabled" : "") + '>← 上一页</button>' +
+        '<span class="story-pageinfo">第 ' + (page + 1) + " / " + total + " 页</span>" +
+        '<button class="story-pgbtn" data-act="pageNext"' + (page >= total - 1 ? " disabled" : "") + '>下一页 →</button>'
+      : '<span class="story-pageinfo">全文已显示</span>';
+
+    const last = page >= total - 1;
+    $("#story-actions").classList.toggle("is-waiting", !last);
+    this.bindStage();
+    storyScrollTop();
+  },
+
   renderIntro() {
     const st = S.story, d = storyCurrent();
     if (!d) return this.renderStoryHome();
     const isFinale = st.storyId === STORY_FINALE;
-    $("#st-phase").textContent = chapterPhase(st);
-    $("#st-progress").textContent = isFinale ? "FINALE" : "CHAPTER " + (st.idx + 1) + " / " + STORY_TOTAL;
-    const intro = (d.intro || []).map((p) => "<p>" + esc(p) + "</p>").join("");
-    $("#story-stage").innerHTML = `
-      <div class="story-kicker">${isFinale ? "FINALE · 回血" : "CHAPTER " + (st.idx + 1)}</div>
-      <h2 class="story-title">${esc(d.title)}</h2>
-      <div class="story-intro">${intro || "<p>（本章暂无简介）</p>"}</div>
-      <div class="story-actions">
-        <button class="btn primary" data-act="startChapter">开始本章</button>
-        <button class="btn" data-act="storyHome">剧情主页</button>
-      </div>`;
-    this.bindStage();
-    window.scrollTo(0, 0);
+    this.renderReader({
+      kicker: isFinale ? "FINALE · 回血" : "CHAPTER " + (st.idx + 1),
+      title: d.title,
+      phase: chapterPhase(st),
+      progress: isFinale ? "FINALE" : "CHAPTER " + (st.idx + 1) + " / " + STORY_TOTAL,
+      blocks: storyTextBlocks((d.intro && d.intro.length) ? d.intro : ["（本章暂无简介）"]),
+      actions: '<button class="btn primary" data-act="startChapter">开始本章</button>'
+    });
   },
 
   startEvents() {
@@ -194,6 +335,7 @@ const Story = {
     if (!d || !d.events || !d.events.length) return this.finishEpisode();
     S.story.phase = "event";
     S.story.eventId = d.events[0].id;
+    S.story.page = 0;
     S.story.wrongInStory = 0;
     S.story.choicesInStory = 0;
     S.story.lastCorrect = null;
@@ -205,24 +347,24 @@ const Story = {
     const st = S.story, d = storyCurrent(), ev = storyEvent(d, st.eventId);
     if (!d) return this.renderStoryHome();
     if (!ev) return this.finishEpisode();
-    $("#st-phase").textContent = chapterPhase(st);
-    $("#st-progress").textContent = st.storyId === STORY_FINALE ? "FINALE" : "第 " + (st.idx + 1) + " / " + STORY_TOTAL + " 章";
-    const scene = (ev.scene || []).map((p) => "<p>" + esc(p) + "</p>").join("");
-    const sys = (ev.systemState || []).map((p) => "<p>" + esc(p) + "</p>").join("");
-    const msgs = (ev.messages || []).map(storyMsgHTML).join("");
+    const blocks = [].concat(
+      storyTextBlocks(ev.scene || []),
+      storyTextBlocks(ev.systemState || [], "story-sysline"),
+      storyChatBlocks(ev.messages || [])
+    );
     const choices = (ev.choices || []).map((c, i) =>
       '<button class="story-choice" data-choice="' + i + '"><span class="idx">' + (i + 1) + "</span>" + esc(c.text) + "</button>"
     ).join("");
-    $("#story-stage").innerHTML = `
-      <div class="story-kicker">${st.storyId === STORY_FINALE ? "FINALE" : "CHAPTER " + (st.idx + 1)}</div>
-      <h2 class="story-title">${esc(d.title)}</h2>
-      ${scene ? '<div class="story-lines">' + scene + "</div>" : ""}
-      ${sys ? '<div class="story-sys">' + sys + "</div>" : ""}
-      ${msgs ? '<div class="story-chat">' + msgs + "</div>" : ""}
-      ${choices ? '<div class="story-choices">' + choices + "</div>" : '<div class="story-actions"><button class="btn primary" data-act="outcomeNext">继续</button></div>'}
-      <div class="story-actions"><button class="btn" data-act="storyHome">剧情主页</button></div>`;
-    this.bindStage();
-    window.scrollTo(0, 0);
+    this.renderReader({
+      kicker: st.storyId === STORY_FINALE ? "FINALE" : "CHAPTER " + (st.idx + 1),
+      title: d.title,
+      phase: chapterPhase(st),
+      progress: st.storyId === STORY_FINALE ? "FINALE" : "第 " + (st.idx + 1) + " / " + STORY_TOTAL + " 章",
+      blocks,
+      actions: choices
+        ? '<div class="story-choices">' + choices + "</div>"
+        : '<button class="btn primary" data-act="outcomeNext">继续</button>'
+    });
   },
 
   choose(i) {
@@ -247,6 +389,7 @@ const Story = {
     else st.route = { type: "ending", kind: c.correct ? "good" : "bad" };
 
     st.phase = "outcome";
+    st.page = 0;
     store();
     SFX.play(c.correct ? "good" : "bad");
     this.renderOutcome();
@@ -257,18 +400,14 @@ const Story = {
     if (!d) return this.renderStoryHome();
     const lines = (ev && st.outcomeKind && ev[st.outcomeKind]) ? ev[st.outcomeKind] : [];
     if (!lines.length) return this.applyRoute();
-    $("#st-phase").textContent = chapterPhase(st);
-    $("#st-progress").textContent = st.storyId === STORY_FINALE ? "FINALE" : "第 " + (st.idx + 1) + " / " + STORY_TOTAL + " 章";
-    $("#story-stage").innerHTML = `
-      <div class="story-kicker">${st.storyId === STORY_FINALE ? "FINALE" : "CHAPTER " + (st.idx + 1)}</div>
-      <h2 class="story-title">${esc(d.title)}</h2>
-      <div class="story-outcome">${lines.map((p) => "<p>" + esc(p) + "</p>").join("")}</div>
-      <div class="story-actions">
-        <button class="btn primary" data-act="outcomeNext">继续</button>
-        <button class="btn" data-act="storyHome">剧情主页</button>
-      </div>`;
-    this.bindStage();
-    window.scrollTo(0, 0);
+    this.renderReader({
+      kicker: st.storyId === STORY_FINALE ? "FINALE" : "CHAPTER " + (st.idx + 1),
+      title: d.title,
+      phase: chapterPhase(st),
+      progress: st.storyId === STORY_FINALE ? "FINALE" : "第 " + (st.idx + 1) + " / " + STORY_TOTAL + " 章",
+      blocks: storyTextBlocks(lines),
+      actions: '<button class="btn primary" data-act="outcomeNext">继续</button>'
+    });
   },
 
   applyRoute() {
@@ -281,6 +420,7 @@ const Story = {
       if (!ev) return this.finishEpisode();
       st.eventId = route.id;
       st.phase = "event";
+      st.page = 0;
       store();
       return this.renderEvent();
     }
@@ -302,6 +442,7 @@ const Story = {
       st.final = "bad";
       st.completed = true;
       st.phase = "final";
+      st.page = 0;
       store();
       return this.renderFinal("bad");
     }
@@ -311,6 +452,7 @@ const Story = {
     if (found >= 0) st.results[found] = result;
     else st.results.push(result);
     st.phase = "episodeEnd";
+    st.page = 0;
     store();
     this.renderEpisodeEnding(finalKind);
   },
@@ -320,26 +462,25 @@ const Story = {
     if (!d) return this.renderStoryHome();
     const isLast = st.idx >= STORY_TOTAL - 1;
     const lines = (kind === "good" ? d.goodEnding : d.badEnding) || ["……"];
-    $("#st-phase").textContent = chapterPhase(st);
-    $("#st-progress").textContent = "第 " + (st.idx + 1) + " / " + STORY_TOTAL + " 章 · " + (kind === "good" ? "识破" : "中招");
     const next = isLast
       ? (st.allWrong
           ? '<button class="btn danger" data-act="finale">进入终章 · 回血</button>'
           : '<button class="btn primary" data-act="finalGood">查看主线结局</button>')
       : '<button class="btn primary" data-act="nextChapter">下一章</button>';
-    $("#story-stage").innerHTML = `
-      <div class="story-kicker">${kind === "good" ? "CHAPTER CLEARED" : "CHAPTER FAILED"}</div>
-      <h2 class="story-title">${esc(d.title)}</h2>
-      <div class="story-end ${kind}">
-        <h2>${kind === "good" ? "本章 · 识破" : "本章 · 中招"}</h2>
-        ${lines.map((p) => "<p>" + esc(p) + "</p>").join("")}
-      </div>
-      <div class="story-actions">${next}<button class="btn" data-act="storyHome">剧情主页</button></div>
-      ${isLast ? (st.allWrong
-        ? '<p class="story-note">五章的所有选择都错了。终章「回血」已解锁。</p>'
-        : '<p class="story-note">你至少做对了一次，终章不会开启。主线将直接进入好结局。</p>') : ""}`;
-    this.bindStage();
-    window.scrollTo(0, 0);
+    const blocks = storyTextBlocks(lines);
+    if (isLast) {
+      blocks.push('<p class="story-note">' + (st.allWrong
+        ? "五章的所有选择都错了。终章「回血」已解锁。"
+        : "你至少做对了一次，终章不会开启。主线将直接进入好结局。") + "</p>");
+    }
+    this.renderReader({
+      kicker: kind === "good" ? "CHAPTER CLEARED" : "CHAPTER FAILED",
+      title: d.title,
+      phase: chapterPhase(st),
+      progress: "第 " + (st.idx + 1) + " / " + STORY_TOTAL + " 章 · " + (kind === "good" ? "识破" : "中招"),
+      blocks,
+      actions: next
+    });
   },
 
   nextChapter() {
@@ -349,6 +490,7 @@ const Story = {
     st.storyId = STORY_ORDER[st.idx];
     st.phase = "intro";
     st.eventId = null;
+    st.page = 0;
     st.wrongInStory = 0;
     st.choicesInStory = 0;
     st.lastCorrect = null;
@@ -362,6 +504,7 @@ const Story = {
     st.storyId = STORY_FINALE;
     st.phase = "intro";
     st.eventId = null;
+    st.page = 0;
     st.wrongInStory = 0;
     st.choicesInStory = 0;
     st.lastCorrect = null;
@@ -374,6 +517,7 @@ const Story = {
     st.final = kind;
     st.completed = true;
     st.phase = "final";
+    st.page = 0;
     store();
     this.renderFinal(kind);
   },
@@ -383,28 +527,37 @@ const Story = {
     const lines = kind === "good"
       ? (w.campaignGoodEnding || []).concat(w.goodEndingTail ? [w.goodEndingTail] : [])
       : ((fd && fd.badEnding) || ["……"]).concat(w.badEndingTail ? [w.badEndingTail] : []);
-    const list = st.results.map((r) => {
-      const d = storyData(r.id);
-      return "<li>" + esc(d ? d.title : r.id) + " · " + (r.ending === "good" ? "好结局" : "坏结局") +
-        "（选错 " + r.wrong + " / " + r.choices + " 次）</li>";
-    }).join("");
-    $("#st-phase").textContent = "全 剧 终";
-    $("#st-progress").textContent = kind === "good" ? "主线 · 好结局" : "终章 · 坏结局";
-    $("#story-stage").innerHTML = `
-      <div class="story-end ${kind}">
-        <h2>${kind === "good" ? "主 线 好 结 局" : "终 章 坏 结 局"}</h2>
-        ${lines.map((p) => "<p>" + esc(p) + "</p>").join("")}
-      </div>
-      <div class="story-intro">
-        <p style="margin-bottom:6px;color:var(--txt-dim)">本周目章节记录</p>
-        <ul class="story-final-list">${list || "<li>暂无记录</li>"}</ul>
-      </div>
-      <div class="story-actions">
-        <button class="btn primary" data-act="new">重新开始剧情</button>
-        <button class="btn" data-act="storyHome">剧情主页</button>
-        <button class="btn" data-act="backHome">返回首页</button>
-      </div>`;
-    this.bindStage();
-    window.scrollTo(0, 0);
+    const blocks = storyTextBlocks(lines);
+    blocks.push('<p class="story-final-head">本周目章节记录</p>');
+    if (st.results.length) {
+      st.results.forEach((r) => {
+        const d = storyData(r.id);
+        blocks.push('<p class="story-final-item">' + esc(d ? d.title : r.id) + " · " +
+          (r.ending === "good" ? "好结局" : "坏结局") + "（选错 " + r.wrong + " / " + r.choices + " 次）</p>");
+      });
+    } else {
+      blocks.push('<p class="story-final-item">暂无记录</p>');
+    }
+    this.renderReader({
+      kicker: "ALL CHAPTERS · 全剧终",
+      title: kind === "good" ? "主 线 好 结 局" : "终 章 坏 结 局",
+      phase: "全 剧 终",
+      progress: kind === "good" ? "主线 · 好结局" : "终章 · 坏结局",
+      blocks,
+      actions: '<button class="btn primary" data-act="new">重新开始剧情</button>' +
+        '<button class="btn" data-act="backHome">返回首页</button>'
+    });
   }
 };
+
+/* 屏幕尺寸 / 手机浏览器地址栏变化后重新测量正文分页 */
+let storyResizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(storyResizeTimer);
+  storyResizeTimer = setTimeout(() => {
+    const view = $("#v-story");
+    if (!view || !view.classList.contains("active")) return;
+    if (!S.story || S.story.phase === "home") return;
+    Story.renderCurrent();
+  }, 160);
+});
