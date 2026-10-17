@@ -606,7 +606,6 @@ const Story = {
     const isLast = !review && st.idx >= STORY_TOTAL - 1;
     const label = kind === "good" ? "好结局" : "坏结局";
     const lines = (kind === "good" ? d.goodEnding : d.badEnding) || ["……"];
-    const goodCount = storyGoodCount(st);
     const finaleUnlocked = storyFinaleUnlocked(st);
     const next = review
       ? '<button class="btn primary" data-act="reviewAgain">再读一次</button>' +
@@ -614,13 +613,11 @@ const Story = {
       : (isLast
           ? (finaleUnlocked
               ? '<button class="btn danger" data-act="finale">进入终章 · 回血</button>'
-              : '<button class="btn primary" data-act="finalGood">查看主线结局</button>')
+              : '<button class="btn primary" data-act="finalGood">继续</button>')
           : '<button class="btn primary" data-act="nextChapter">下一章</button>');
     const blocks = storyTextBlocks(lines);
-    if (isLast) {
-      blocks.push('<p class="story-note">' + (finaleUnlocked
-        ? "五章中有 " + goodCount + " 章好结局（不超过 2 章）。终章「回血」已解锁，主线将进入坏结局。"
-        : "五章中有 " + goodCount + " 章好结局（达到 3 章及以上）。终章不会开启，主线将直接进入好结局。") + "</p>");
+    if (isLast && finaleUnlocked) {
+      blocks.push('<p class="story-note">终章「回血」已解锁。</p>');
     }
     const where = st.storyId === STORY_FINALE ? "终章" : "第 " + (st.idx + 1) + " 章";
     this.renderReader({
