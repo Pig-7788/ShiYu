@@ -1,7 +1,8 @@
 /* ============ 识渔计划 · 剧情模式引擎 ============ */
 /* 线性主线：学费 → 学长 → 饰品 → 修电脑 → 代刷
-   规则：五章中只要有一步没选错，第五章结束后直接进入好结局；
-        只有五章的所有选择全部选错，才会进入终章「回血」，并固定走坏结局。 */
+   规则：第五章结束后统计五章的好结局数量；
+        好结局 ≤ 2 章进入终章「回血」，固定走坏结局；
+        好结局 ≥ 3 章不进入终章，直接走主线好结局。 */
 "use strict";
 
 const STORY_ORDER = ["tuition", "senior", "cs-steam", "repair", "daishua"];
@@ -17,7 +18,6 @@ function freshStory() {
     storyId: null,
     eventId: null,
     page: 0,              // 当前故事正文页
-    allWrong: true,       // 前五章是否所有选择都错
     wrongInStory: 0,
     choicesInStory: 0,
     lastCorrect: null,
@@ -168,6 +168,16 @@ function chapterPhase(st) {
   return st.storyId === STORY_FINALE ? "终 章" : "第 " + (st.idx + 1) + " 章";
 }
 
+/* 五章中已达成好结局的章节数 */
+function storyGoodCount(st) {
+  return ((st && st.results) || []).filter((r) => r.ending === "good").length;
+}
+
+/* 好结局 ≤ 2 章时进入终章；否则第五章结束后直接进入主线好结局 */
+function storyFinaleUnlocked(st) {
+  return ((st && st.results) || []).length >= STORY_TOTAL && storyGoodCount(st) <= 2;
+}
+
 const Story = {
   open() {
     if (!S.story || !Array.isArray(S.story.results)) S.story = Object.assign(freshStory(), S.story || {});
@@ -212,7 +222,7 @@ const Story = {
       });
     }).join("");
 
-    let fCls = "locked", fStatus = "未解锁 · 前五章须全部选错", fReview = false;
+    let fCls = "locked", fStatus = "未解锁 · 好结局章节须 ≤ 2", fReview = false;
     if (st.final === "bad") {
       fCls = "bad";
       fStatus = "已达成 · 坏结局";
@@ -220,7 +230,7 @@ const Story = {
     } else if (st.final === "good") {
       fCls = "locked";
       fStatus = "本周目未开启";
-    } else if (st.allWrong && st.results.length >= STORY_TOTAL) {
+    } else if (storyFinaleUnlocked(st)) {
       fCls = "current";
       fStatus = st.storyId === STORY_FINALE ? "进行中" : "已解锁";
     }
@@ -242,7 +252,7 @@ const Story = {
           ${started ? '<button class="btn" data-act="new">重新开始</button>' : ""}
           <button class="btn" data-act="backHome">返回首页</button>
         </div>
-        <p class="story-note">规则：五章中只要有一步没选错，第五章结束后会直接进入好结局；只有五章的所有选择全部选错，才会解锁终章「回血」。</p>
+        <p class="story-note">规则：五章结束后统计好结局章节，好结局不超过 2 章会解锁终章「回血」并进入坏结局；好结局达到 3 章及以上则直接进入主线好结局。</p>
       </div>`;
     this.bindStage();
     storyScrollTop();
@@ -498,7 +508,6 @@ const Story = {
     st.wrongInStory += wrong ? 1 : 0;
     st.choicesInStory += 1;
     st.lastCorrect = !!c.correct;
-    if (st.storyId !== STORY_FINALE) st.allWrong = st.allWrong && wrong;
 
     let kind = null;
     if (wrong && c.wrongPath === "A" && ev.onWrongA) kind = "onWrongA";
@@ -597,19 +606,21 @@ const Story = {
     const isLast = !review && st.idx >= STORY_TOTAL - 1;
     const label = kind === "good" ? "好结局" : "坏结局";
     const lines = (kind === "good" ? d.goodEnding : d.badEnding) || ["……"];
+    const goodCount = storyGoodCount(st);
+    const finaleUnlocked = storyFinaleUnlocked(st);
     const next = review
       ? '<button class="btn primary" data-act="reviewAgain">再读一次</button>' +
         '<button class="btn" data-act="storyHome">返回剧情主页</button>'
       : (isLast
-          ? (st.allWrong
+          ? (finaleUnlocked
               ? '<button class="btn danger" data-act="finale">进入终章 · 回血</button>'
               : '<button class="btn primary" data-act="finalGood">查看主线结局</button>')
           : '<button class="btn primary" data-act="nextChapter">下一章</button>');
     const blocks = storyTextBlocks(lines);
     if (isLast) {
-      blocks.push('<p class="story-note">' + (st.allWrong
-        ? "五章的所有选择都错了。终章「回血」已解锁。"
-        : "你至少做对了一次，终章不会开启。主线将直接进入好结局。") + "</p>");
+      blocks.push('<p class="story-note">' + (finaleUnlocked
+        ? "五章中有 " + goodCount + " 章好结局（不超过 2 章）。终章「回血」已解锁，主线将进入坏结局。"
+        : "五章中有 " + goodCount + " 章好结局（达到 3 章及以上）。终章不会开启，主线将直接进入好结局。") + "</p>");
     }
     const where = st.storyId === STORY_FINALE ? "终章" : "第 " + (st.idx + 1) + " 章";
     this.renderReader({
