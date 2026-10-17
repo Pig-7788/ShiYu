@@ -175,15 +175,17 @@ function normalizeDims() {
   return out;
 }
 function rankOf(avg) { return RANKS.find((r) => avg >= r.min).name; }
-function accOf(waveIdx) {
-  const a = G ? G.answers[waveIdx] : [];
-  if (!a.length) return null;
-  return Math.round((100 * a.filter((x) => x.correct).length) / a.length);
+function accOfSamples(ids) {
+  if (!G) return null;
+  const wanted = new Set(ids || []);
+  const rows = G.answers.reduce((all, a) => all.concat(a), []).filter((x) => wanted.has(x.qid));
+  if (!rows.length) return null;
+  return Math.round((100 * rows.filter((x) => x.correct).length) / rows.length);
 }
 function finishGame() {
   if (!G) return;
   clearInterval(G.tick);
-  const pre = accOf(0), post = accOf(3);
+  const pre = accOfSamples(CAMPAIGN.pretest), post = accOfSamples(CAMPAIGN.posttest);
   const dimsN = normalizeDims();
   const avg = Math.round(DIMENSIONS.reduce((s, d) => s + dimsN[d.key], 0) / DIMENSIONS.length);
   S.report = { pre, post, dims: dimsN, avg, rank: rankOf(avg), score: G.score, bestCombo: G.bestCombo, at: Date.now() };

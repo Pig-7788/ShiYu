@@ -146,16 +146,20 @@ function setLabStatus(text, bad) {
   box.classList.toggle("bad", !!bad);
 }
 function bindGeneDrag(el) {
-  let sx = 0, sy = 0, moved = false;
+  let sx = 0, sy = 0, moved = false, active = false, pointerId = null;
   el.draggable = false;
   el.onpointerdown = (e) => {
+    // 只有按下后才进入拖拽态；否则鼠标悬停时的 pointermove 会把卡片平移出屏幕。
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     if (el.classList.contains("used")) return;
+    active = true; pointerId = e.pointerId;
     sx = e.clientX; sy = e.clientY; moved = false;
     try { el.setPointerCapture(e.pointerId); } catch (err) {}
     e.preventDefault();
     SFX.play("pick");
   };
   el.onpointermove = (e) => {
+    if (!active || e.pointerId !== pointerId) return;
     const dx = e.clientX - sx, dy = e.clientY - sy;
     if (Math.abs(dx) + Math.abs(dy) > 6) moved = true;
     if (moved) {
@@ -166,11 +170,13 @@ function bindGeneDrag(el) {
     }
   };
   const resetDrag = () => {
+    active = false; pointerId = null;
     el.classList.remove("dragging");
     el.style.transform = "";
     document.querySelectorAll(".lab-slot").forEach((s) => s.classList.remove("hot"));
   };
   const up = (e) => {
+    if (!active || e.pointerId !== pointerId) return;
     const g = GENES.find((x) => x.id === el.dataset.gene);
     const slot = moved ? slotAtPoint(e.clientX, e.clientY, ".lab-slot") : null;
     resetDrag();

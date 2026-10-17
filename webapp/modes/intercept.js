@@ -1,19 +1,28 @@
 /* ============ 拦截战 / 拆解台（独立模式模块） ============ */
 "use strict";
 
-/* ============ 拦截战（拖拽分拣） ============ */
+/* ============ 拦截战（拖拽分拣，10 波后结算） ============ */
 const WAVES = [
-  { name: "第一波 · 前测侦察", ids: CAMPAIGN.pretest, reveal: false },
-  { name: "第二波 · 近海拦截", ids: CAMPAIGN.train.slice(0, 5), reveal: true },
-  { name: "第三波 · 深水区", ids: CAMPAIGN.train.slice(5), reveal: true },
-  { name: "第四波 · 终局后测", ids: CAMPAIGN.posttest, reveal: false },
+  { name: "前测侦察", ids: CAMPAIGN.pretest.slice(0, 2), reveal: false },
+  { name: "前测侦察", ids: CAMPAIGN.pretest.slice(2, 4), reveal: false },
+  { name: "前测侦察", ids: CAMPAIGN.pretest.slice(4), reveal: false },
+  { name: "近海拦截", ids: CAMPAIGN.train.slice(0, 2), reveal: true },
+  { name: "近海拦截", ids: CAMPAIGN.train.slice(2, 4), reveal: true },
+  { name: "深水区", ids: CAMPAIGN.train.slice(4, 6), reveal: true },
+  { name: "深水区", ids: CAMPAIGN.train.slice(6, 8), reveal: true },
+  { name: "深水区", ids: CAMPAIGN.train.slice(8, 10), reveal: true },
+  { name: "终局后测", ids: CAMPAIGN.posttest.slice(0, 2), reveal: false },
+  { name: "终局后测", ids: CAMPAIGN.posttest.slice(2), reveal: false },
 ];
 let G = null; // 战局状态
+function waveLabel(w) {
+  return G && w ? "第 " + (G.waveIdx + 1) + " / " + WAVES.length + " 波 · " + w.name : "";
+}
 function startGame() {
   Officer.cancel();
   if (G) clearInterval(G.tick);
   G = { waveIdx: 0, cardIdx: 0, lives: 100, score: 0, combo: 0, bestCombo: 0,
-        answers: [[], [], [], []], sortLog: [] };
+        answers: WAVES.map(() => []), sortLog: [] };
   S.dims = freshDims(); S.missCat = {}; S.report = null; store();
   show("game"); nextCard();
 }
@@ -46,7 +55,7 @@ function nextCard() {
   if (G.cardIdx >= w.ids.length) { startDismantle(); return; }
   const q = SAMPLE_MAP[w.ids[G.cardIdx]];
   G.cur = q; G.locked = false;
-  $("#g-phase").textContent = w.name;
+  $("#g-phase").textContent = waveLabel(w);
   $("#g-wave").textContent = (G.cardIdx + 1) + "/" + w.ids.length;
   $("#g-timer-txt").textContent = "";
   $("#g-stage").innerHTML = `
@@ -190,7 +199,7 @@ function startDismantle() {
   DM = { list: phish, chips: [], placed: 0 };
   phish.forEach((q) => q.redflags.forEach((r) => DM.chips.push({ q, r, tries: 0, done: false })));
   const slotCats = [...new Set(DM.chips.map((c) => c.r.category))];
-  $("#g-phase").textContent = w.name + " · 拆解台";
+  $("#g-phase").textContent = waveLabel(w) + " · 拆解台";
   $("#g-wave").textContent = "证物 " + DM.chips.length;
   $("#g-stage").innerHTML = `
     <div class="hint">把证物<b>拖进</b>对应破绽类别槽（点一下证物可查看内容）</div>
@@ -217,15 +226,18 @@ function startDismantle() {
   $("#dm-done").onclick = finishDismantle;
 }
 function bindChipDrag(el) {
-  let sx = 0, sy = 0, moved = false;
+  let sx = 0, sy = 0, moved = false, active = false, pointerId = null;
   el.onpointerdown = (e) => {
     const c = DM && DM.chips[+el.dataset.i];
     if (!c || c.done) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    active = true; pointerId = e.pointerId;
     sx = e.clientX; sy = e.clientY; moved = false;
     try { el.setPointerCapture(e.pointerId); } catch (err) {}
     SFX.play("pick");
   };
   el.onpointermove = (e) => {
+    if (!active || e.pointerId !== pointerId) return;
     const c = DM && DM.chips[+el.dataset.i];
     if (!c || c.done) return;
     const dx = e.clientX - sx, dy = e.clientY - sy;
@@ -238,13 +250,18 @@ function bindChipDrag(el) {
       document.querySelectorAll(".dm-slot").forEach((s) => s.classList.toggle("hot", s === hot));
     }
   };
-  const up = (e) => {
-    const c = DM && DM.chips[+el.dataset.i];
-    if (!c || c.done) return;
+  const resetDrag = () => {
+    active = false; pointerId = null;
     el.classList.remove("dragging");
     el.style.transform = ""; el.style.zIndex = "";
-    const hitSlot = moved ? slotAtPoint(e.clientX, e.clientY, ".dm-slot") : null;
     document.querySelectorAll(".dm-slot").forEach((s) => s.classList.remove("hot"));
+  };
+  const up = (e) => {
+    if (!active || e.pointerId !== pointerId) return;
+    const c = DM && DM.chips[+el.dataset.i];
+    const hitSlot = moved ? slotAtPoint(e.clientX, e.clientY, ".dm-slot") : null;
+    resetDrag();
+    if (!c || c.done) return;
     if (!moved) { // 点击=查看
       $("#dm-inspect").textContent = "证物内容：" + (partOf(c.q, c.r.target) ? esc(String(partOf(c.q, c.r.target).text).slice(0, 70)) : c.r.category);
       return;
@@ -253,7 +270,6 @@ function bindChipDrag(el) {
     c.tries++;
     if (hitSlot.dataset.cat === c.r.category) {
       c.done = true; DM.placed++;
-      el.classList.add("locked"); el.style.opacity = ".45";
       const tag = document.createElement("span");
       tag.className = "placed" + (c.tries > 1 ? " miss" : "");
       tag.textContent = el.textContent.slice(0, 10);
@@ -271,7 +287,9 @@ function bindChipDrag(el) {
       $("#dm-inspect").textContent = "放错了——「" + el.textContent.slice(0, 12) + "」不属于「" + CATEGORY_NAME[hitSlot.dataset.cat] + "」";
     }
   };
-  el.onpointerup = up; el.onpointercancel = up;
+  el.onpointerup = up;
+  el.onpointercancel = resetDrag;
+  el.onlostpointercapture = resetDrag;
 }
 function finishDismantle() {
   if (!G || !DM) return;
