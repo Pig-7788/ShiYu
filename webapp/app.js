@@ -821,7 +821,7 @@ function renderHome() {
   const st = S.story || {};
   const done = Array.isArray(st.results) ? st.results.length : 0;
   let tail = "";
-  if (st.final === "good") tail = ' · <span style="color:var(--cyan)">剧情 · 好结局</span>';
+  if (st.final === "good") tail = ' · <span style="color:var(--good)">剧情 · 好结局</span>';
   else if (st.final === "bad") tail = ' · <span style="color:var(--red)">剧情 · 坏结局</span>';
   else if (st.phase && st.phase !== "home") tail = ' · <span style="color:var(--cyan)">剧情 ' + done + "/5</span>";
   el.innerHTML = (S.report
