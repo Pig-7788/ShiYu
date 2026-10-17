@@ -80,6 +80,7 @@ function renderAttack() {
   const status = filledCount >= GENE_GROUPS.length
     ? "三张伪装卡已就位，可以调参投放。"
     : "还差 " + (GENE_GROUPS.length - filledCount) + " 个槽位：把卡片拖到同类型的槽里。";
+  const priorScroll = st.scrollTop;
   st.innerHTML = `
     <p class="atk-preview">把三张伪装卡<b>拖进</b>对应槽位，再调滑杆造出你的「钓鱼邮件」——预测仪有误差，真检出率投放后揭晓。</p>
     <div class="mode-tabs">
@@ -113,6 +114,7 @@ function renderAttack() {
       <div class="gband">预测检出率 · 误差 ±8 · ≥60% 大概率被防线识破</div>
     </div>
     <button class="btn danger" id="a-launch" style="text-align:center" ${pred != null ? "" : "disabled"}>投放 → 穿越扫描防线</button>`;
+  st.scrollTop = priorScroll;
   bindModeTabs();
   st.querySelectorAll(".lab-card").forEach((el) => bindGeneDrag(el));
   st.querySelectorAll('input[type="range"]').forEach((r) => {
@@ -147,16 +149,21 @@ function setLabStatus(text, bad) {
   box.classList.toggle("bad", !!bad);
 }
 function bindGeneDrag(el) {
-  let sx = 0, sy = 0, moved = false, active = false, pointerId = null, docUp = null;
+  let sx = 0, sy = 0, moved = false, active = false, pointerId = null, docUp = null, docMove = null;
   el.draggable = false;
   el.onpointerdown = (e) => {
     // 只有按下后才进入拖拽态；否则鼠标悬停时的 pointermove 会把卡片平移出屏幕。
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (active) resetDrag();
     active = true; pointerId = e.pointerId;
     sx = e.clientX; sy = e.clientY; moved = false;
     try { el.setPointerCapture(e.pointerId); } catch (err) {}
-    // 拖拽卡片本身设了 pointer-events:none 防止遮挡其他卡片；若指针捕获不可用，
-    // 由 document 兜底接收 pointerup，避免拖拽状态卡死。
+    docMove = (ev) => {
+      if (!active || ev.pointerId !== pointerId) return;
+      if (typeof el.onpointermove === "function") el.onpointermove(ev);
+    };
+    document.addEventListener("pointermove", docMove);
+    // 指针捕获失败时（例如元素在拖动中被重新渲染），由 document 兜底接收 pointermove / pointerup。
     docUp = (ev) => {
       if (!active || ev.pointerId !== pointerId) return;
       if (ev.type === "pointercancel") resetDrag(); else up(ev);
@@ -178,11 +185,19 @@ function bindGeneDrag(el) {
     }
   };
   const resetDrag = () => {
+    const pid = pointerId;
     active = false; pointerId = null;
+    if (docMove) {
+      document.removeEventListener("pointermove", docMove);
+      docMove = null;
+    }
     if (docUp) {
       document.removeEventListener("pointerup", docUp);
       document.removeEventListener("pointercancel", docUp);
       docUp = null;
+    }
+    if (pid !== null && el.hasPointerCapture && el.hasPointerCapture(pid)) {
+      try { el.releasePointerCapture(pid); } catch (err) {}
     }
     el.classList.remove("dragging");
     el.style.transform = "";
@@ -191,10 +206,12 @@ function bindGeneDrag(el) {
   const up = (e) => {
     if (!active || e.pointerId !== pointerId) return;
     const g = GENES.find((x) => x.id === el.dataset.gene);
-    const slot = moved ? slotAtPoint(e.clientX, e.clientY, ".lab-slot") : null;
+    // pointermove 万一没有送达（捕获失败/浏览器差异），仍用按下与抬起的坐标判断是否发生了拖动。
+    const dragged = moved || Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) > 6;
+    const slot = dragged ? slotAtPoint(e.clientX, e.clientY, ".lab-slot") : null;
     resetDrag();
     if (!g) return;
-    if (!moved) {
+    if (!dragged) {
       const groupName = (GENE_GROUPS.find((x) => x.key === g.group) || {}).name || "对应类型";
       setLabStatus("拖动「" + g.name + "」到「" + groupName + "」槽即可装配。");
       return;
@@ -218,7 +235,6 @@ function bindGeneDrag(el) {
   };
   el.onpointerup = up;
   el.onpointercancel = resetDrag;
-  el.onlostpointercapture = resetDrag;
 }
 function launchAttack() {
   const a = S.atk, sl = a.sl;
