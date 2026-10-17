@@ -36,8 +36,8 @@
 
 - `startGame()/nextCard()/sortCard()/exitGame()` —— 拦截战：每波 1 张、共 10 次发牌与限时，拖拽/键盘分拣、连击与血量结算、第 10 次后直接生成报告、主动退出
 - `startDismantle()/startReviewDismantle()/bindChipDrag()/finishDismantle()` —— 拆解台：报告页可选复盘，证物生成、指针坐标命中槽位、首放命中/试错判定与讲解，复盘不计入正式战绩
-- `renderAttack()/bindGeneDrag()/launchAttack()/launchFreeAttack()/exitAttack()` —— 实验室：拖卡装配、滑杆实时改预测仪（±误差）、投放噪声结算、扫描束动画、主动退出；自由撰写规则引擎（`FREE_RULES`）
-- `labSelection()/labPredict()` —— 只接受“卡片类型 = 槽位类型”的合法装配，缺卡或错槽返回 `null`，避免预测仪取空值崩溃
+- `renderAttack()/bindGeneDrag()/launchAttack()/launchFreeAttack()/exitAttack()` —— 实验室：拖卡装配（同类型卡可叠进同一个槽）、滑杆实时改预测仪（±误差）、投放噪声结算、扫描束动画、主动退出；自由撰写规则引擎（`FREE_RULES`）
+- `labCardsFor()/labSelection()/labPredict()` —— 只接受“卡片类型 = 槽位类型”的合法装配；同槽多卡按检出分累加，缺组或错槽返回 `null`，避免预测仪取空值崩溃
 - `Officer` —— 安全官：逐条打字机气泡 + Web Speech 语音 + 快捷追问（`OFFICER_QA`，本地知识库回答）
 - `SFX` —— WebAudio 合成音效（拾取/命中/警报/连击），无音频文件
 - `drawRadar()/finishGame()/renderReport()` —— 五维画像与前后测报告

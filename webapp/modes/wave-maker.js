@@ -23,24 +23,44 @@ function exitAttack() {
   renderHome();
   show("more");
 }
+function labCardsFor(slots, key) {
+  const raw = slots ? slots[key] : null;
+  const ids = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+  const seen = new Set();
+  return ids
+    .map((id) => GENES.find((x) => x.id === id && x.group === key))
+    .filter((card) => {
+      if (!card || seen.has(card.id)) return false;
+      seen.add(card.id);
+      return true;
+    });
+}
 function labCardFor(slots, key) {
-  return GENES.find((x) => x.id === slots[key] && x.group === key) || null;
+  return labCardsFor(slots, key)[0] || null;
+}
+function normLabSlots(slots) {
+  const out = {};
+  GENE_GROUPS.forEach((g) => { out[g.key] = labCardsFor(slots, g.key).map((c) => c.id); });
+  return out;
 }
 function labSelection(slots) {
   const picked = {};
   for (const group of GENE_GROUPS) {
-    const card = labCardFor(slots, group.key);
-    if (!card) return null;
-    picked[group.key] = card;
+    const cards = labCardsFor(slots, group.key);
+    if (!cards.length) return null;
+    picked[group.key] = cards;
   }
   return picked;
+}
+function sumDet(cards) {
+  return cards.reduce((n, c) => n + c.det, 0);
 }
 function labPredict(slots, sl) {
   const picked = labSelection(slots);
   if (!picked) return null;
-  const tech = picked.tech.det;
-  const skin = picked.skin.det * (1 - sl.stealth / 160);
-  const psych = picked.psych.det * (0.55 + sl.aggro / 90);
+  const tech = sumDet(picked.tech);
+  const skin = sumDet(picked.skin) * (1 - sl.stealth / 160);
+  const psych = sumDet(picked.psych) * (0.55 + sl.aggro / 90);
   const vol = sl.volume * 0.12;
   return Math.round(Math.min(97, 5 + tech + skin + psych + vol));
 }
@@ -73,35 +93,44 @@ function renderAttack() {
     return;
   }
   const sl = a.sl;
-  const picked = GENE_GROUPS.map((g) => labCardFor(a.slots, g.key));
-  const filledCount = picked.filter(Boolean).length;
-  const deck = GENES.filter((x) => a.slots[x.group] !== x.id);
+  a.slots = normLabSlots(a.slots);
+  const groupCards = GENE_GROUPS.map((g) => ({ key: g.key, name: g.name, cards: labCardsFor(a.slots, g.key) }));
+  const filledGroups = groupCards.filter((g) => g.cards.length).length;
+  const totalCards = groupCards.reduce((n, g) => n + g.cards.length, 0);
+  const selectedIds = new Set(groupCards.flatMap((g) => g.cards.map((c) => c.id)));
+  const deck = GENES.filter((x) => !selectedIds.has(x.id));
   const pred = labPredict(a.slots, sl);
-  const status = filledCount >= GENE_GROUPS.length
-    ? "三张伪装卡已就位，可以调参投放。"
-    : "还差 " + (GENE_GROUPS.length - filledCount) + " 个槽位：把卡片拖到同类型的槽里。";
+  const status = filledGroups >= GENE_GROUPS.length
+    ? "已装入 " + totalCards + " 张伪装卡（三类齐备），可以调参投放。"
+    : "还差 " + (GENE_GROUPS.length - filledGroups) + " 类槽位：同类型卡可叠进同一个槽。";
   const priorScroll = st.scrollTop;
   st.innerHTML = `
-    <p class="atk-preview">把三张伪装卡<b>拖进</b>对应槽位，再调滑杆造出你的「钓鱼邮件」——预测仪有误差，真检出率投放后揭晓。</p>
+    <p class="atk-preview">把伪装卡<b>拖进</b>对应槽位（同类型可叠多张），再调滑杆造出你的「钓鱼邮件」——预测仪有误差，真检出率投放后揭晓。</p>
     <div class="mode-tabs">
       <span class="mtab on" data-m="genes">🧩 组装实验室</span>
       <span class="mtab" data-m="free">✍️ 自由撰写</span>
     </div>
-    <div class="lab-slots">${GENE_GROUPS.map((g) => {
-      const filled = labCardFor(a.slots, g.key);
-      return '<div class="lab-slot' + (filled ? " filled" : "") + '" data-slot="' + g.key + '">' +
-        (filled ? esc(filled.name) : "拖入「" + g.name + "」") + "</div>";
+    <div class="lab-slots">${groupCards.map((g) => {
+      return '<div class="lab-slot' + (g.cards.length ? " filled" : "") + '" data-slot="' + g.key +
+        '" title="' + (g.cards.length ? "可继续拖入同类型卡；点击卡片可移出" : "把「" + g.name + "」卡拖到这里") + '">' +
+        (g.cards.length
+          ? '<span class="slot-stack">' + g.cards.map((c) =>
+              '<button type="button" class="slot-card" data-remove-card="' + c.id + '" title="点击移出「' + esc(c.name) + '」">' +
+              '<b>' + esc(c.name) + "</b><em>+" + c.det + "</em></button>").join("") +
+            '</span><small class="slot-add">可继续拖入「' + g.name + '」卡</small>'
+          : '<span class="slot-empty">拖入「' + g.name + '」卡</span>') +
+        "</div>";
     }).join("")}</div>
-    <div class="lab-deck" id="lab-deck">${deck.map((x) => {
+    <div class="lab-deck" id="lab-deck">${deck.length ? deck.map((x) => {
       const icon = x.group === "skin" ? "🎭" : x.group === "psych" ? "🧠" : "🧬";
       return '<div class="lab-card" data-gene="' + x.id +
         '" title="防线暴露值 +' + x.det + '：越高越容易被识破">' +
         '<span class="gi">' + icon + '</span><span class="lab-name">' + esc(x.name) + "</span>" +
         "<small>暴露 +" + x.det + "</small></div>";
-    }).join("")}</div>
-    <div class="lab-legend">「暴露 +N」= 这张卡被 AI 防线识别的风险；装配成功后卡片会从牌堆移入对应槽位。</div>
+    }).join("") : '<p class="lab-empty">牌堆已空：九张伪装卡都进槽了，可以继续调参或点卡片移出。</p>'}</div>
+    <div class="lab-legend">「暴露 +N」= 这张卡被 AI 防线识别的风险；同类型卡可叠进同一个槽，检出分数会累加。</div>
     <div class="lab-status" id="lab-status" aria-live="polite"><span>${status}</span>${
-      filledCount ? '<button type="button" class="lab-clear" id="a-clear-slots">清空装配</button>' : ""
+      filledGroups ? '<button type="button" class="lab-clear" id="a-clear-slots">清空装配</button>' : ""
     }</div>
     <div class="sliders">${LAB_SLIDERS.map((s) =>
       '<div class="srow"><label>' + s.name + "</label>" +
@@ -117,6 +146,22 @@ function renderAttack() {
   st.scrollTop = priorScroll;
   bindModeTabs();
   st.querySelectorAll(".lab-card").forEach((el) => bindGeneDrag(el));
+  st.querySelectorAll("[data-remove-card]").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const slotEl = btn.closest(".lab-slot");
+      if (!slotEl) return;
+      const key = slotEl.dataset.slot;
+      const card = GENES.find((x) => x.id === btn.dataset.removeCard);
+      S.atk.slots[key] = labCardsFor(S.atk.slots, key)
+        .filter((c) => c.id !== btn.dataset.removeCard)
+        .map((c) => c.id);
+      SFX.play("pick");
+      renderAttack();
+      if (card) setLabStatus("已把「" + card.name + "」移回牌堆。");
+    };
+  });
   st.querySelectorAll('input[type="range"]').forEach((r) => {
     r.oninput = () => {
       sl[r.dataset.sl] = +r.value;
@@ -230,8 +275,17 @@ function bindGeneDrag(el) {
       return;
     }
     SFX.play("lock");
-    S.atk.slots[slot.dataset.slot] = g.id;
+    const key = slot.dataset.slot;
+    const slotName = (GENE_GROUPS.find((x) => x.key === key) || {}).name || "这个槽位";
+    const current = labCardsFor(S.atk.slots, key);
+    if (current.some((c) => c.id === g.id)) {
+      SFX.play("bad");
+      setLabStatus("「" + g.name + "」已经在「" + slotName + "」槽里了。", true);
+      return;
+    }
+    S.atk.slots[key] = current.map((c) => c.id).concat(g.id);
     renderAttack();
+    setLabStatus("已把「" + g.name + "」" + (current.length ? "叠进" : "放进") + "「" + slotName + "」槽，共 " + (current.length + 1) + " 张。");
   };
   el.onpointerup = up;
   el.onpointercancel = resetDrag;
@@ -240,15 +294,16 @@ function launchAttack() {
   const a = S.atk, sl = a.sl;
   const picked = labSelection(a.slots);
   if (!picked) return;
-  const used = GENE_GROUPS.map((g) => picked[g.key]);
+  const used = GENE_GROUPS.flatMap((g) => picked[g.key]);
   const tech = picked.tech;
   const skin = picked.skin;
   const psych = picked.psych;
+  const cardNames = (cards) => cards.map((c) => c.name).join("、");
   const token = ATK_RUN;
   const parts = {
-    tech: tech.det,
-    skin: Math.round(skin.det * (1 - sl.stealth / 160)),
-    psych: Math.round(psych.det * (0.55 + sl.aggro / 90)),
+    tech: sumDet(tech),
+    skin: Math.round(sumDet(skin) * (1 - sl.stealth / 160)),
+    psych: Math.round(sumDet(psych) * (0.55 + sl.aggro / 90)),
     vol: Math.round(sl.volume * 0.12),
   };
   const detect = Math.min(97, 5 + parts.tech + parts.skin + parts.psych + parts.vol);
@@ -291,9 +346,9 @@ function launchAttack() {
   const script = [caught
     ? `拦截成功，检出率 ${finalDetect}%（预测仪只估了 ${detect}%——防线总有一点你猜不到的余量）。`
     : `警报，检出率只有 ${finalDetect}%。它咬中化身了。`]
-    .concat(tech.det > 0 ? ["技术伪装「" + tech.name + "」贡献 " + parts.tech + " 点。伪装度 " + sl.stealth + " 削弱不了技术特征。"] : [])
-    .concat(parts.skin > 0 ? ["身份伪装「" + skin.name + "」经伪装度削弱后仍贡献 " + parts.skin + " 点。"] : ["身份伪装被你的高伪装度完全洗白了。"])
-    .concat(parts.psych > 0 ? ["心理话术「" + psych.name + "」在激进度 " + sl.aggro + " 下贡献 " + parts.psych + " 点。"] : [])
+    .concat(parts.tech > 0 ? ["技术伪装「" + cardNames(tech) + "」贡献 " + parts.tech + " 点。伪装度 " + sl.stealth + " 削弱不了技术特征。"] : [])
+    .concat(parts.skin > 0 ? ["身份伪装「" + cardNames(skin) + "」经伪装度削弱后仍贡献 " + parts.skin + " 点。"] : ["身份伪装被你的高伪装度完全洗白了。"])
+    .concat(parts.psych > 0 ? ["心理话术「" + cardNames(psych) + "」在激进度 " + sl.aggro + " 下贡献 " + parts.psych + " 点。"] : [])
     .concat(sl.volume >= 60 ? ["投放量 " + sl.volume + " 太大，样本人群里一定有防线的眼线（+" + parts.vol + "）。"] : []);
   const know = used.slice().sort((x, y) => y.det - x.det)[0];
   if (know) script.push("记一条：" + know.knowledge);
