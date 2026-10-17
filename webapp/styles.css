@@ -64,12 +64,31 @@ footer { flex: none; text-align: center; color: var(--txt-dim); font-size: 9.5px
   overflow: hidden; padding: 0 2px;
 }
 #app > .view.active {
-  display: block; flex: 1; min-height: 0;
+  display: block; flex: 1; min-height: 0; width: 100%;
   overflow-y: auto; overflow-x: hidden; padding-right: 2px;
+  overscroll-behavior: contain;
 }
 #app > #v-story.active {
   display: flex; flex-direction: column; overflow: hidden; padding-right: 0;
 }
+/* 游戏模式与剧情共用固定舞台：页头固定，只有内容区滚动 */
+#app > #v-game.active,
+#app > #v-attack.active {
+  display: flex; flex-direction: column; overflow: hidden; padding-right: 0;
+}
+#v-game > .q-head,
+#v-attack > .q-head { flex: none; }
+#g-stage,
+#a-stage {
+  flex: 1; min-height: 0; width: 100%;
+  overflow-y: auto; overflow-x: hidden; padding-right: 2px;
+  overscroll-behavior: contain;
+}
+#a-stage { margin: 10px 0 0; }
+#g-stage::-webkit-scrollbar,
+#a-stage::-webkit-scrollbar { width: 5px; }
+#g-stage::-webkit-scrollbar-thumb,
+#a-stage::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 #app > .view.active::-webkit-scrollbar { width: 5px; }
 #app > .view.active::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 
@@ -111,6 +130,15 @@ footer { flex: none; text-align: center; color: var(--txt-dim); font-size: 9.5px
 .q-head .phase { color: var(--cyan); letter-spacing: 1px; }
 .q-head .timer { color: var(--red); font-variant-numeric: tabular-nums; }
 .q-head .timer.calm { color: var(--txt-dim); }
+.q-head .mode-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.mode-exit {
+  background: transparent; border: 1px solid var(--line); border-radius: 20px;
+  color: var(--txt-dim); font-family: inherit; font-size: 10.5px; line-height: 1;
+  padding: 4px 9px; cursor: pointer; transition: .15s;
+}
+.mode-exit:hover, .mode-exit:focus-visible {
+  color: var(--red); border-color: rgba(255,84,112,.55); outline: none;
+}
 
 .mock { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; position: relative; background: #0b1220; }
 .mock .m-head { padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--txt-dim);
@@ -395,12 +423,32 @@ footer { flex: none; text-align: center; color: var(--txt-dim); font-size: 9.5px
   transition: .15s; padding: 6px; text-align: center; }
 .lab-slot.filled { border-style: solid; border-color: rgba(255,84,112,.55); background: var(--red-dim); color: var(--txt); }
 .lab-slot.hot { border-color: var(--amber); background: rgba(255,184,77,.08); }
-.lab-deck { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
-.lab-card { position: relative; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px;
-  padding: 10px 8px; text-align: center; font-size: 12px; cursor: grab; user-select: none; touch-action: none; }
+.lab-slot.reject { border-color: var(--red); background: var(--red-dim); animation: shake .35s ease; }
+.lab-deck { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 6px; }
+.lab-card { position: relative; min-width: 0; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 8px; text-align: center; font-size: 12px; cursor: grab; user-select: none; touch-action: none;
+  transition: border-color .15s, background .15s, box-shadow .15s; }
+.lab-card:hover { border-color: rgba(255,84,112,.55); box-shadow: 0 0 0 1px rgba(255,84,112,.10) inset; }
 .lab-card .gi { font-size: 18px; display: block; margin-bottom: 4px; }
-.lab-card.dragging { z-index: 6; box-shadow: 0 14px 34px rgba(255,84,112,.3); border-color: var(--red); }
-.lab-card.used { opacity: .35; pointer-events: none; }
+.lab-card .lab-name { display: block; color: var(--txt); font-size: 11.5px; line-height: 1.35; }
+.lab-card small { display: block; margin-top: 3px; color: var(--txt-dim); font-size: 9.5px; }
+.lab-card.dragging { z-index: 6; box-shadow: 0 14px 34px rgba(255,84,112,.3); border-color: var(--red); cursor: grabbing; }
+.lab-card.used {
+  opacity: 1; background: rgba(255,84,112,.10); border-color: rgba(255,84,112,.5);
+  cursor: default;
+}
+.lab-card.used::after { content: "已装配"; position: absolute; top: 4px; right: 5px;
+  color: var(--red); font-size: 8px; letter-spacing: .3px; }
+.lab-card.used .gi { filter: grayscale(.45); opacity: .65; }
+.lab-card.used small { color: var(--red); }
+.lab-legend { color: var(--txt-dim); font-size: 9.5px; line-height: 1.6; margin: 0 0 4px; }
+.lab-status { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: 20px; margin: 2px 0 4px; color: var(--txt-dim); font-size: 10.5px; line-height: 1.55; }
+.lab-status.bad { color: var(--red); }
+.lab-status > span { min-width: 0; }
+.lab-clear { flex: none; background: transparent; border: 1px solid var(--line); border-radius: 20px;
+  color: var(--txt-dim); font-family: inherit; font-size: 10px; padding: 3px 8px; cursor: pointer; }
+.lab-clear:hover { color: var(--cyan); border-color: rgba(53,224,200,.5); }
 .sliders { margin: 10px 0; }
 .srow { display: flex; align-items: center; gap: 10px; margin: 8px 0; font-size: 12px; }
 .srow label { width: 88px; flex: none; color: var(--txt-dim); }

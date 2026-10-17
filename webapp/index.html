@@ -43,7 +43,10 @@
     </section>
 
     <section id="v-game" class="view">
-      <div class="q-head"><span class="phase" id="g-phase"></span><span class="timer" id="g-timer-txt"></span></div>
+      <div class="q-head">
+        <span class="phase" id="g-phase"></span>
+        <span class="mode-tools"><span class="timer" id="g-timer-txt"></span><button class="mode-exit" id="g-exit" type="button">退出</button></span>
+      </div>
       <div class="g-top">
         <span class="lives" id="g-lives-wrap" title="数据完整度"><i id="g-lives" style="width:100%"></i></span>
         <span class="g-score" id="g-score">0</span>
@@ -67,13 +70,14 @@
       </div>
       <div class="card"><h3>最需要补的课</h3><ul class="topmiss advice" id="r-topmiss"></ul></div>
       <div class="card"><h3>个性化建议</h3><ul class="advice" id="r-advice"></ul></div>
-      <button class="btn danger" id="b-report-attack"><b>去造浪者模式</b><small>从攻击者视角再练一轮</small></button>
+      <button class="btn primary" id="b-report-again"><b>再来一局 · 拦截战</b><small>重新四波分拣，刷新训练报告</small></button>
+      <button class="btn" id="b-more-report">返回更多玩法</button>
       <button class="btn" id="b-home1">返回首页</button>
     </section>
 
     <section id="v-attack" class="view">
       <div class="q-head"><span class="phase">造浪者 · 红蓝对抗</span>
-        <span><span class="round-dots" id="a-round"></span> <button class="voice-btn" id="a-voice">🔊 语音</button></span></div>
+        <span class="mode-tools"><span class="round-dots" id="a-round"></span><button class="voice-btn" id="a-voice">🔊 语音</button><button class="mode-exit" id="a-exit" type="button">退出</button></span></div>
       <div class="card" id="a-stage"></div>
     </section>
 
@@ -119,6 +123,8 @@
 <script src="story/STORY_DAISHUA.js"></script>
 <script src="story/STORY_REVENGE.js"></script>
 <script src="app.js"></script>
+<script src="modes/intercept.js"></script>
+<script src="modes/wave-maker.js"></script>
 <script src="story-engine.js"></script>
 </body>
 </html>
