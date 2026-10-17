@@ -19,13 +19,27 @@
       <div class="hero">
         <div class="fish" id="hero-pet"></div>
         <p>信息之海里，钓鱼攻击最可怕的地方是它看起来正常。<br>
-        在这里反复练——判断、圈出破绽、听 AI 讲解，<br>直到识别成为条件反射。</p>
+        先跟着 Z 同学走一遍五个真实改编的骗局，<br>再进训练场，把识别练成条件反射。</p>
       </div>
       <div class="rankline" id="home-rank"></div>
+      <div class="home-actions">
+        <button class="btn primary home-cta" id="b-story"><b>剧情模式</b><small>五章主线 · 每一次选择都算数</small></button>
+        <button class="btn home-cta" id="b-more"><b>更多玩法</b><small>拦截战 · 造浪者 · 我的画像 · 关于本作品</small></button>
+      </div>
+    </section>
+
+    <section id="v-more" class="view">
+      <div class="xp-head good">更 多 玩 法</div>
       <button class="btn primary" id="b-start"><b>拦截战 · 开始</b><small>拖拽分拣钓鱼消息 → 拆解台归类证物 → 出具风险画像</small></button>
       <button class="btn danger" id="b-attack"><b>造浪者 · 组装实验室</b><small>拖卡装配+滑杆调参挑战AI防线，或自由撰写一封</small></button>
       <button class="btn" id="b-profile"><b>我的画像</b><small>五维能力雷达 · 段位</small></button>
       <button class="btn" id="b-about"><b>关于本作品</b><small>合规声明 · 技术方案摘要</small></button>
+      <button class="btn" id="b-home-more">返回首页</button>
+    </section>
+
+    <section id="v-story" class="view">
+      <div class="q-head"><span class="phase" id="st-phase">剧 情 模 式</span><span class="story-progress" id="st-progress"></span></div>
+      <div id="story-stage"></div>
     </section>
 
     <section id="v-game" class="view">
@@ -97,6 +111,14 @@
   <footer>识渔计划 SHIYU · 本平台所有样本均为虚构，仅用于识别训练<br>长春理工大学 · 计算机科学技术学院（参赛作品演示）</footer>
 </div>
 <script src="data.js"></script>
+<script src="story/STORY_WORLD.js"></script>
+<script src="story/STORY_TUITION.js"></script>
+<script src="story/STORY_SENIOR.js"></script>
+<script src="story/STORY_CS.js"></script>
+<script src="story/STORY_REPAIR.js"></script>
+<script src="story/STORY_DAISHUA.js"></script>
+<script src="story/STORY_REVENGE.js"></script>
 <script src="app.js"></script>
+<script src="story-engine.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-/* ============ 识渔计划 · 剧情模式 · 故事一 ============ */
+/* ============ 识渔计划 · 剧情模式 · 第三章 饰品 ============ */
 /* 独立文件，结构与 story_cs.js 一致。
    主角：钟昭（Z同学），设定见 STORY_WORLD。
    本故事是【终章】的前置：若在 ev1 或 ev2 选错，库存被盗，
@@ -12,7 +12,7 @@
 
 const STORY_CS = {
   id: "cs-steam",
-  title: "故事一 · 饰品",
+  title: "第三章 · 饰品",
 
   intro: [
     STORY_WORLD.protagonist.intro,
@@ -56,7 +56,7 @@ const STORY_CS = {
 
       choices: [
         { text: "下载工具，扫码验证", correct: false },
-        { text: "关掉聊天框，去 Steam 官网的帮助页面自己查", correct: true }
+        { text: "关掉聊天框，去 Steam 官网的帮助页面自己查", correct: true, next: "ev2" }
       ],
 
       onWrong: [

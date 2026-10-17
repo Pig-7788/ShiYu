@@ -1,4 +1,4 @@
-/* ============ 识渔计划 · 剧情模式 · 故事五 ============ */
+/* ============ 识渔计划 · 剧情模式 · 第二章 学长 ============ */
 /* 独立文件，结构与 story_cs.js 一致。
    主角：钟昭（Z同学），设定见 STORY_WORLD。
 
@@ -11,7 +11,7 @@
 
 const STORY_SENIOR = {
   id: "senior",
-  title: "故事五 · 学长",
+  title: "第二章 · 学长",
 
   intro: [
     STORY_WORLD.protagonist.intro,
@@ -93,7 +93,7 @@ const STORY_SENIOR = {
 
       choices: [
         { text: "微信找那个学长，要求退款", correct: false, next: "ev1-sub2" },
-        { text: "算了，300 块，当买个教训", correct: true }
+        { text: "算了，300 块，当买个教训", correct: true, ending: "bad" }
       ],
 
       onRight: [
@@ -129,7 +129,7 @@ const STORY_SENIOR = {
 
       choices: [
         { text: "继续跟他理论，说不退就举报", correct: false, next: "ev1-sub3" },
-        { text: "不理论了，截图，找辅导员", correct: true }
+        { text: "不理论了，截图，找辅导员", correct: true, ending: "bad" }
       ],
 
       onRight: [
@@ -173,7 +173,7 @@ const STORY_SENIOR = {
 
       choices: [
         { text: "继续在微信里跟他吵", correct: false },
-        { text: "不吵了，截图，找辅导员", correct: true }
+        { text: "不吵了，截图，找辅导员", correct: true, ending: "bad" }
       ],
 
       onWrong: [

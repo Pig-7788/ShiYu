@@ -1,4 +1,4 @@
-/* ============ 识渔计划 · 剧情模式 · 故事二 ============ */
+/* ============ 识渔计划 · 剧情模式 · 第一章 学费 ============ */
 /* 独立文件，结构与 story_cs.js 一致。
    主角：钟昭（Z同学），设定见 STORY_WORLD。
    本故事要点：
@@ -10,7 +10,7 @@
 
 const STORY_TUITION = {
   id: "tuition",
-  title: "故事二 · 学费",
+  title: "第一章 · 学费",
 
   intro: [
     STORY_WORLD.protagonist.intro,

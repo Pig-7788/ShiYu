@@ -4,12 +4,13 @@ const $ = (s) => document.querySelector(s);
 const LS_KEY = "shiyu_v3";
 
 /* ---------- 状态 ---------- */
-let S = { dims: null, missCat: {}, report: null, atk: null };
+let S = { dims: null, missCat: {}, report: null, atk: null, story: null };
 function freshDims() { const d = {}; DIMENSIONS.forEach((x) => (d[x.key] = { hit: 0, miss: 0, fa: 0 })); return d; }
 function store() {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify({
       dims: S.dims, report: S.report, missCat: S.missCat, atkBest: S.atk ? S.atk.best : null, atkFreeHits: S.atk ? (S.atk.freeHits || null) : null,
+      story: S.story,
     }));
   } catch (e) {}
 }
@@ -20,7 +21,12 @@ function restore() {
     S.report = (d && d.report) || null;
     S.missCat = (d && d.missCat) || {};
     S.atk = { round: 1, mode: "genes", slots: {}, history: [], best: d ? d.atkBest : null, freeHits: (d && d.atkFreeHits) || {}, freeText: "" };
-  } catch (e) { S.dims = freshDims(); S.atk = { round: 1, mode: "genes", slots: {}, history: [], best: null, freeHits: {}, freeText: "" }; }
+    S.story = Object.assign(freshStory(), (d && d.story) || {});
+  } catch (e) {
+    S.dims = freshDims();
+    S.atk = { round: 1, mode: "genes", slots: {}, history: [], best: null, freeHits: {}, freeText: "" };
+    S.story = freshStory();
+  }
 }
 
 /* ---------- 视图 ---------- */
@@ -810,9 +816,15 @@ function renderProfile() {
 }
 function renderHome() {
   const el = $("#home-rank");
-  el.innerHTML = S.report
+  const st = S.story || {};
+  const done = Array.isArray(st.results) ? st.results.length : 0;
+  let tail = "";
+  if (st.final === "good") tail = ' · <span style="color:var(--cyan)">剧情 · 好结局</span>';
+  else if (st.final === "bad") tail = ' · <span style="color:var(--red)">剧情 · 坏结局</span>';
+  else if (st.phase && st.phase !== "home") tail = ' · <span style="color:var(--cyan)">剧情 ' + done + "/5</span>";
+  el.innerHTML = (S.report
     ? '段位 <b>' + S.report.rank + "</b> · 战绩 " + (S.report.score ?? "--") + ' · <span style="color:var(--txt-dim)">再战一轮刷新画像</span>'
-    : '<span style="color:var(--txt-dim)">尚无画像 · 完成一场拦截战后生成</span>';
+    : '<span style="color:var(--txt-dim)">尚无画像 · 完成一场拦截战后生成</span>') + tail;
 }
 function init() {
   restore();
@@ -820,6 +832,9 @@ function init() {
   const pet = $("#hero-pet");
   if (pet) pet.innerHTML = officerChar();
   renderHome();
+  $("#b-story").onclick = () => Story.open();
+  $("#b-more").onclick = () => show("more");
+  $("#b-home-more").onclick = () => { renderHome(); show("home"); };
   $("#b-start").onclick = () => startGame();
   $("#b-attack").onclick = () => startAttack(true);
   $("#b-profile").onclick = () => { renderProfile(); show("profile"); };
@@ -830,9 +845,9 @@ function init() {
   if (vb) vb.onclick = () => Officer.toggle();
   Officer.syncBtn();
   $("#b-reset").onclick = () => {
-    if (!confirm("确认清空全部战绩与画像？")) return;
+    if (!confirm("确认清空全部战绩、画像与剧情进度？")) return;
     try { localStorage.removeItem(LS_KEY); } catch (e) {}
-    S = { dims: freshDims(), missCat: {}, report: null, atk: { round: 1, mode: "genes", slots: {}, history: [], best: null, freeHits: {}, freeText: "", sl: { stealth: 50, aggro: 50, volume: 30 } } };
+    S = { dims: freshDims(), missCat: {}, report: null, atk: { round: 1, mode: "genes", slots: {}, history: [], best: null, freeHits: {}, freeText: "", sl: { stealth: 50, aggro: 50, volume: 30 } }, story: freshStory() };
     renderProfile(); renderHome();
   };
 }

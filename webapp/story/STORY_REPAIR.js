@@ -1,4 +1,4 @@
-/* ============ 识渔计划 · 剧情模式 · 故事六 ============ */
+/* ============ 识渔计划 · 剧情模式 · 第四章 修电脑 ============ */
 /* 独立文件，结构与 story_cs.js 一致。
    主角：钟昭（Z同学），设定见 STORY_WORLD。
 
@@ -11,7 +11,7 @@
 
 const STORY_REPAIR = {
   id: "repair",
-  title: "故事六 · 修电脑",
+  title: "第四章 · 修电脑",
 
   intro: [
     STORY_WORLD.protagonist.intro,
@@ -96,7 +96,7 @@ const STORY_REPAIR = {
 
       choices: [
         { text: "太贵了，不修了，让他寄回来", correct: false, next: "ev1-sub2" },
-        { text: "让他先寄回来，自己找本地店看看", correct: true }
+        { text: "让他先寄回来，自己找本地店看看", correct: true, ending: "bad" }
       ],
 
       onRight: [
@@ -138,7 +138,7 @@ const STORY_REPAIR = {
 
       choices: [
         { text: "可能是驱动问题，重装一下系统", correct: false },
-        { text: "拆开机箱，看看硬件有没有被动过", correct: true }
+        { text: "拆开机箱，看看硬件有没有被动过", correct: true, ending: "bad" }
       ],
 
       onWrong: [
