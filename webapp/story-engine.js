@@ -62,35 +62,75 @@ function storySplitText(text, maxLen) {
 function storyTextBlocks(lines, cls, maxLen) {
   const out = [];
   (lines || []).forEach((text) => {
-    storySplitText(text, maxLen || 76).forEach((chunk) => {
-      out.push("<p" + (cls ? ' class="' + cls + '"' : "") + ">" + esc(chunk) + "</p>");
-    });
-  });
-  return out;
-}
-
-function storyChatBlocks(messages) {
-  const out = [];
-  (messages || []).forEach((m) => {
-    const sender = m.sender || "";
-    const narration = /^[（(]/.test(sender) || /系统|旁白/.test(sender);
-    (m.lines || []).forEach((line) => {
-      storySplitText(line, 62).forEach((chunk, i) => {
-        if (narration) {
-          out.push('<div class="story-msg narration">' + esc(chunk) + "</div>");
-        } else {
-          out.push('<div class="story-msg"><span class="who">' + esc(sender) +
-            (i ? "（续）" : "") + "</span>" + esc(chunk) + "</div>");
-        }
+    storySplitText(text, maxLen || 48).forEach((chunk) => {
+      out.push({
+        html: "<p" + (cls ? ' class="' + cls + '"' : "") + ">" + esc(chunk) + "</p>"
       });
     });
   });
   return out;
 }
 
-/* 按正文框的真实高度测量分页：先离屏逐块累加，超过高度就换页 */
+/* 邮件/聊天统一渲染为引用卡片：发件人只在卡片头部出现一次 */
+function storyChatBlocks(messages) {
+  const out = [];
+  let group = 0;
+  const stageWidth = (document.querySelector("#wrap") || {}).clientWidth || window.innerWidth || 0;
+  const quoteMax = stageWidth <= 320 ? 32 : 44;
+  (messages || []).forEach((m) => {
+    const sender = m.sender || "";
+    const narration = /^[（(]/.test(sender) || /系统|旁白/.test(sender);
+    if (narration || !sender) {
+      out.push.apply(out, storyTextBlocks(m.lines || [], "", 48));
+      return;
+    }
+    const id = "q" + (group++);
+    let first = true;
+    (m.lines || []).forEach((line) => {
+      storySplitText(line, quoteMax).forEach((chunk) => {
+        out.push({
+          html: '<p class="story-quote-line">' + esc(chunk) + "</p>",
+          quote: { group: id, sender: sender, start: first }
+        });
+        first = false;
+      });
+    });
+  });
+  return out;
+}
+
+/* 把当前页的块拼成 HTML：连续引用块合成一张卡片，跨页时加“续” */
+function storyPageHTML(blocks) {
+  const list = blocks || [];
+  let html = "";
+  let i = 0;
+  while (i < list.length) {
+    const b = list[i];
+    const q = (b && typeof b === "object") ? b.quote : null;
+    if (q) {
+      const group = q.group;
+      const body = [];
+      while (i < list.length && list[i] && typeof list[i] === "object" &&
+             list[i].quote && list[i].quote.group === group) {
+        body.push(list[i].html || "");
+        i++;
+      }
+      html += '<div class="story-quote"><div class="story-quote-head">' +
+        esc(q.sender) + (q.start ? "" : '<span class="quote-cont">续</span>') +
+        "</div>" + body.join("") + "</div>";
+    } else {
+      html += (b && typeof b === "object") ? (b.html || "") : (b || "");
+      i++;
+    }
+  }
+  return html || '<p class="story-empty">……</p>';
+}
+
+/* 按真实高度分页：每次用最终页 HTML 测量，卡片边框/内边距/续页标识都计入 */
 function storyPaginate(blocks, host) {
-  const list = (blocks && blocks.length) ? blocks.slice() : ['<p class="story-empty">……</p>'];
+  const list = (blocks && blocks.length) ? blocks.slice() : [{
+    html: '<p class="story-empty">……</p>'
+  }];
   const limit = (host.clientHeight || 0) - 2;
   const width = host.clientWidth || 0;
   if (limit < 40 || width < 40) return [list];
@@ -102,16 +142,15 @@ function storyPaginate(blocks, host) {
 
   const pages = [];
   let cur = [];
-  list.forEach((html) => {
-    probe.insertAdjacentHTML("beforeend", html);
-    if (probe.getBoundingClientRect().height > limit && cur.length) {
-      probe.removeChild(probe.lastElementChild);
+  list.forEach((block) => {
+    cur.push(block);
+    probe.innerHTML = storyPageHTML(cur);
+    if (probe.getBoundingClientRect().height > limit && cur.length > 1) {
+      cur.pop();
       pages.push(cur);
-      cur = [];
-      probe.innerHTML = "";
-      probe.insertAdjacentHTML("beforeend", html);
+      cur = [block];
+      probe.innerHTML = storyPageHTML(cur);
     }
-    cur.push(html);
   });
   if (cur.length) pages.push(cur);
   probe.remove();
@@ -301,7 +340,7 @@ const Story = {
     const total = pages.length;
     const page = Math.max(0, Math.min(st.page || 0, total - 1));
     st.page = page;
-    host.innerHTML = pages[page].join("");
+    host.innerHTML = storyPageHTML(pages[page]);
 
     const bar = $("#story-pagebar");
     bar.innerHTML = total > 1
@@ -349,7 +388,7 @@ const Story = {
     if (!ev) return this.finishEpisode();
     const blocks = [].concat(
       storyTextBlocks(ev.scene || []),
-      storyTextBlocks(ev.systemState || [], "story-sysline"),
+      storyTextBlocks(ev.systemState || [], "story-secondary"),
       storyChatBlocks(ev.messages || [])
     );
     const choices = (ev.choices || []).map((c, i) =>
