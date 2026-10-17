@@ -1,18 +1,11 @@
 /* ============ 拦截战 / 拆解台（独立模式模块） ============ */
 "use strict";
 
-/* ============ 拦截战（拖拽分拣，10 波后结算） ============ */
+/* ============ 拦截战（每波一张、10 次选择后结算） ============ */
 const WAVES = [
-  { name: "前测侦察", ids: CAMPAIGN.pretest.slice(0, 2), reveal: false },
-  { name: "前测侦察", ids: CAMPAIGN.pretest.slice(2, 4), reveal: false },
-  { name: "前测侦察", ids: CAMPAIGN.pretest.slice(4), reveal: false },
-  { name: "近海拦截", ids: CAMPAIGN.train.slice(0, 2), reveal: true },
-  { name: "近海拦截", ids: CAMPAIGN.train.slice(2, 4), reveal: true },
-  { name: "深水区", ids: CAMPAIGN.train.slice(4, 6), reveal: true },
-  { name: "深水区", ids: CAMPAIGN.train.slice(6, 8), reveal: true },
-  { name: "深水区", ids: CAMPAIGN.train.slice(8, 10), reveal: true },
-  { name: "终局后测", ids: CAMPAIGN.posttest.slice(0, 2), reveal: false },
-  { name: "终局后测", ids: CAMPAIGN.posttest.slice(2), reveal: false },
+  ...CAMPAIGN.pretest.map((id) => ({ name: "前测侦察", ids: [id], reveal: false })),
+  ...CAMPAIGN.train.map((id, i) => ({ name: i < 2 ? "近海拦截" : "深水区", ids: [id], reveal: true })),
+  ...CAMPAIGN.posttest.map((id) => ({ name: "终局后测", ids: [id], reveal: false })),
 ];
 let G = null; // 战局状态
 function waveLabel(w) {
@@ -23,15 +16,24 @@ function startGame() {
   if (G) clearInterval(G.tick);
   G = { waveIdx: 0, cardIdx: 0, lives: 100, score: 0, combo: 0, bestCombo: 0,
         answers: WAVES.map(() => []), sortLog: [] };
+  DM = null;
   S.dims = freshDims(); S.missCat = {}; S.report = null; store();
   show("game"); nextCard();
 }
 function exitGame() {
   if (!G) { show("more"); return; }
+  if (G.done) {
+    Officer.cancel();
+    DM = null;
+    renderReport();
+    show("report");
+    return;
+  }
   if (!confirm("退出拦截战？本局分数不会保留。")) return;
   clearInterval(G.tick);
   Officer.cancel();
   G = null;
+  DM = null;
   $("#v-game").classList.remove("shake");
   renderHome();
   show("more");
@@ -52,11 +54,11 @@ function nextCard() {
   if (!G) return;
   const w = wave();
   if (!w) { finishGame(); return; }
-  if (G.cardIdx >= w.ids.length) { startDismantle(); return; }
+  if (G.cardIdx >= w.ids.length) { endWave(); return; }
   const q = SAMPLE_MAP[w.ids[G.cardIdx]];
   G.cur = q; G.locked = false;
   $("#g-phase").textContent = waveLabel(w);
-  $("#g-wave").textContent = (G.cardIdx + 1) + "/" + w.ids.length;
+  $("#g-wave").textContent = "第 " + (G.waveIdx + 1) + " 次选择";
   $("#g-timer-txt").textContent = "";
   $("#g-stage").innerHTML = `
     <div class="g-sorter">
@@ -64,7 +66,7 @@ function nextCard() {
       <div class="g-center">
         <div class="g-timerbar" id="g-timerbar"><i id="g-timer" style="width:100%"></i></div>
         <div class="g-card" id="g-card">${cardFace(q)}</div>
-        <div class="g-queue" id="g-queue">${"●".repeat(w.ids.length - G.cardIdx - 1) || "○"}</div>
+        <div class="g-queue" id="g-queue">${"●".repeat(w.ids.length - G.cardIdx)}</div>
       </div>
       <div class="dropzone dz-safe" id="dzR"><span>正 常</span></div>
     </div>
@@ -137,6 +139,7 @@ document.addEventListener("keydown", (e) => {
 function sortCard(side) {
   if (!G || G.locked) return;
   G.locked = true; clearInterval(G.tick);
+  const tt = $("#g-timer-txt"); if (tt) tt.textContent = "";
   const q = G.cur, w = wave();
   const correct = side === (q.phishing ? "phish" : "safe");
   G.answers[G.waveIdx].push({ qid: q.id, correct, timeout: side === null });
@@ -188,18 +191,33 @@ function refreshHud() {
   if (lv) { lv.style.width = G.lives + "%"; $("#g-lives-wrap").classList.toggle("low", G.lives <= 40); }
 }
 
-/* ============ 拆解台（证物拖放分类） ============ */
+/* ============ 拆解台（结算后的可选复盘） ============ */
 let DM = null;
-function startDismantle() {
+function reportReviewSamples() {
+  if (!G || !G.sortLog) return [];
+  const ids = new Set(G.sortLog.map((x) => x.qid));
+  return SAMPLES.filter((q) => ids.has(q.id) && q.phishing);
+}
+function startReviewDismantle() {
+  const samples = reportReviewSamples();
+  if (!samples.length) { show("report"); return; }
+  Officer.cancel();
+  startDismantle(samples, true);
+}
+function startDismantle(samples, review) {
   if (!G) return;
   const w = wave();
-  if (!w) { finishGame(); return; }
-  const phish = w.ids.map((id) => SAMPLE_MAP[id]).filter((q) => q.phishing);
-  if (!phish.length || !w.reveal) { endWave(); return; }
-  DM = { list: phish, chips: [], placed: 0 };
+  const list = samples || (w ? w.ids.map((id) => SAMPLE_MAP[id]) : []);
+  const phish = list.filter((q) => q.phishing);
+  if (!phish.length) {
+    if (review) { renderReport(); show("report"); } else { endWave(); }
+    return;
+  }
+  DM = { list: phish, chips: [], placed: 0, review: !!review };
   phish.forEach((q) => q.redflags.forEach((r) => DM.chips.push({ q, r, tries: 0, done: false })));
-  const slotCats = [...new Set(DM.chips.map((c) => c.r.category))];
-  $("#g-phase").textContent = waveLabel(w) + " · 拆解台";
+  show("game");
+  $("#g-timer-txt").textContent = "";
+  $("#g-phase").textContent = review ? "拆解复盘 · 可选" : waveLabel(w) + " · 拆解台";
   $("#g-wave").textContent = "证物 " + DM.chips.length;
   $("#g-stage").innerHTML = `
     <div class="hint">把证物<b>拖进</b>对应破绽类别槽（点一下证物可查看内容）</div>
@@ -211,8 +229,10 @@ function startDismantle() {
       </div>
       <div class="dm-inspect" id="dm-inspect">— 点击证物查看内容，拖到类别槽完成归类 —</div>
     </div>
-    <button class="btn primary" id="dm-done" style="text-align:center" disabled>完成拆解 →</button>`;
+    <button class="btn primary" id="dm-done" style="text-align:center" disabled>${review ? "完成复盘 →" : "完成拆解 →"}</button>`;
   const chipHost = $("#dm-chips");
+  const rows = Math.ceil(DM.chips.length / 3);
+  if (chipHost) chipHost.style.height = Math.max(118, (rows - 1) * 52 + 60) + "px";
   DM.chips.forEach((c, i) => {
     const el = document.createElement("div");
     el.className = "chip-ev"; el.dataset.i = i;
@@ -275,9 +295,11 @@ function bindChipDrag(el) {
       tag.textContent = el.textContent.slice(0, 10);
       hitSlot.appendChild(tag);
       el.remove();
-      const dim = DIM_OF_CATEGORY[c.r.category];
-      S.dims[dim][c.tries > 1 ? "miss" : "hit"]++;
-      if (c.tries > 1) S.missCat[c.r.category] = (S.missCat[c.r.category] || 0) + 1;
+      if (!DM.review) {
+        const dim = DIM_OF_CATEGORY[c.r.category];
+        S.dims[dim][c.tries > 1 ? "miss" : "hit"]++;
+        if (c.tries > 1) S.missCat[c.r.category] = (S.missCat[c.r.category] || 0) + 1;
+      }
       SFX.play("lock");
       $("#g-wave").textContent = "证物 " + (DM.chips.length - DM.placed);
       if (DM.placed >= DM.chips.length) $("#dm-done").disabled = false;
@@ -293,25 +315,34 @@ function bindChipDrag(el) {
 }
 function finishDismantle() {
   if (!G || !DM) return;
+  const review = !!DM.review;
   const missed = DM.chips.filter((c) => c.tries > 1);
   const html = DM.chips.map((c) =>
     '<div class="flaw ' + (c.tries > 1 ? "miss" : "hit") + '"><div class="f-t">' +
     (c.tries > 1 ? "⚠ 试错后归位" : "✓ 首放命中") + " · " + CATEGORY_NAME[c.r.category] +
     "</div><div class=\"f-d\">" + esc(chipLabel(c.q, c.r)) + "：" + esc(c.r.explain) + "</div></div>").join("");
-  G.score += DM.chips.filter((c) => c.tries === 1).length * 50;
-  refreshHud();
+  if (!review) {
+    G.score += DM.chips.filter((c) => c.tries === 1).length * 50;
+    refreshHud();
+  }
   $("#g-stage").innerHTML = `
     <div class="xp-head ${missed.length ? "bad" : "good"}">拆 解 判 定</div>
     <div class="officer-wrap" id="officer"></div>
     <div class="dm-verdict">${html}</div>
-    <button class="btn primary" id="dm-next" style="text-align:center">下一波 →</button>`;
-  const lines = [missed.length
-    ? "这波拆解有 " + missed.length + " 个证物放错了槽。看判 定，每个证物我都写了它属于哪类、为什么。"
-    : "全部首放命中，漂亮。这一波的破绽语法你已经掌握了。"];
+    <button class="btn primary" id="dm-next" style="text-align:center">${review ? "返回报告 →" : "下一波 →"}</button>`;
+  const lines = review
+    ? ["这次复盘不计分，只把本局钓鱼样本的破绽再归一次类。", missed.length
+        ? "有 " + missed.length + " 个证物放错了槽，判定里已经逐条写清它们属于哪一类。"
+        : "全部首放命中，说明这些破绽你已经能一眼定位了。"]
+    : [missed.length
+      ? "这波拆解有 " + missed.length + " 个证物放错了槽。看判定，每个证物我都写了它属于哪类、为什么。"
+      : "全部首放命中，漂亮。这一波的破绽语法你已经掌握了。"];
   const topMiss = Object.entries(S.missCat).sort((a, b) => b[1] - a[1])[0];
   if (topMiss && missed.length) lines.push("目前你最常漏的是「" + CATEGORY_NAME[topMiss[0]] + "」：" + DIM_ADVICE[DIM_OF_CATEGORY[topMiss[0]]]);
   Officer.play(lines);
-  $("#dm-next").onclick = endWave;
+  $("#dm-next").onclick = review
+    ? () => { Officer.cancel(); DM = null; renderReport(); show("report"); }
+    : endWave;
 }
 function endWave() {
   if (!G) return;

@@ -298,9 +298,9 @@ const SAMPLE_MAP = Object.fromEntries(SAMPLES.map(s => [s.id, s]));
 
 /* ---------- 训练战役 ---------- */
 const CAMPAIGN = {
-  pretest:  ["em1", "sms1", "lp1", "em4", "sms4"],
-  train:    ["em2", "em3", "sms2", "sms3", "em5", "lp2", "em7", "lp3", "em8", "lp4"],
-  posttest: ["sms5", "em6", "lp5", "sms6", "em9"],
+  pretest:  ["em1", "sms1", "lp3"],
+  train:    ["em2", "em3", "sms2", "sms3"],
+  posttest: ["sms6", "em9", "lp5"],
 };
 
 const RANKS = [

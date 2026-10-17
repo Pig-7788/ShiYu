@@ -208,6 +208,13 @@ function renderReport() {
   $("#r-advice").innerHTML = weak.map((d) => "<li><b>" + d.name + "（" + r.dims[d.key] + "）</b>：" + DIM_ADVICE[d.key] + "</li>").join("");
   const extra = $("#r-extra");
   if (extra && r.score != null) extra.textContent = "战绩：" + r.score + " 分 · 最高连击 x" + (r.bestCombo || 0) + " · 数据完整度 " + (G ? G.lives : "--") + "%";
+  const reviewBtn = $("#b-report-dismantle");
+  if (reviewBtn) {
+    const n = typeof reportReviewSamples === "function" ? reportReviewSamples().length : 0;
+    reviewBtn.style.display = n ? "" : "none";
+    const hint = reviewBtn.querySelector("small");
+    if (hint) hint.textContent = n ? "把本局 " + n + " 个钓鱼样本的破绽拖进类别槽" : "";
+  }
 }
 function drawRadar(cv, dims) {
   const ctx = cv.getContext("2d");
@@ -288,6 +295,7 @@ function init() {
   $("#b-about").onclick = () => show("about");
   $("#b-home1").onclick = $("#b-home2").onclick = $("#b-home3").onclick = () => { Officer.cancel(); renderHome(); show("home"); };
   $("#b-report-again").onclick = () => startGame();
+  $("#b-report-dismantle").onclick = () => startReviewDismantle();
   $("#b-more-report").onclick = () => { renderHome(); show("more"); };
   const vb = $("#a-voice");
   if (vb) vb.onclick = () => Officer.toggle();

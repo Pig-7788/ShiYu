@@ -75,6 +75,7 @@ function renderAttack() {
   const sl = a.sl;
   const picked = GENE_GROUPS.map((g) => labCardFor(a.slots, g.key));
   const filledCount = picked.filter(Boolean).length;
+  const deck = GENES.filter((x) => a.slots[x.group] !== x.id);
   const pred = labPredict(a.slots, sl);
   const status = filledCount >= GENE_GROUPS.length
     ? "三张伪装卡已就位，可以调参投放。"
@@ -90,14 +91,14 @@ function renderAttack() {
       return '<div class="lab-slot' + (filled ? " filled" : "") + '" data-slot="' + g.key + '">' +
         (filled ? esc(filled.name) : "拖入「" + g.name + "」") + "</div>";
     }).join("")}</div>
-    <div class="lab-deck" id="lab-deck">${GENES.map((x) => {
+    <div class="lab-deck" id="lab-deck">${deck.map((x) => {
       const icon = x.group === "skin" ? "🎭" : x.group === "psych" ? "🧠" : "🧬";
-      return '<div class="lab-card' + (a.slots[x.group] === x.id ? " used" : "") + '" data-gene="' + x.id +
+      return '<div class="lab-card" data-gene="' + x.id +
         '" title="防线暴露值 +' + x.det + '：越高越容易被识破">' +
         '<span class="gi">' + icon + '</span><span class="lab-name">' + esc(x.name) + "</span>" +
         "<small>暴露 +" + x.det + "</small></div>";
     }).join("")}</div>
-    <div class="lab-legend">「暴露 +N」= 这张卡被 AI 防线识别的风险；装配后卡片仍留在牌堆里。</div>
+    <div class="lab-legend">「暴露 +N」= 这张卡被 AI 防线识别的风险；装配成功后卡片会从牌堆移入对应槽位。</div>
     <div class="lab-status" id="lab-status" aria-live="polite"><span>${status}</span>${
       filledCount ? '<button type="button" class="lab-clear" id="a-clear-slots">清空装配</button>' : ""
     }</div>
@@ -146,15 +147,22 @@ function setLabStatus(text, bad) {
   box.classList.toggle("bad", !!bad);
 }
 function bindGeneDrag(el) {
-  let sx = 0, sy = 0, moved = false, active = false, pointerId = null;
+  let sx = 0, sy = 0, moved = false, active = false, pointerId = null, docUp = null;
   el.draggable = false;
   el.onpointerdown = (e) => {
     // 只有按下后才进入拖拽态；否则鼠标悬停时的 pointermove 会把卡片平移出屏幕。
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    if (el.classList.contains("used")) return;
     active = true; pointerId = e.pointerId;
     sx = e.clientX; sy = e.clientY; moved = false;
     try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    // 拖拽卡片本身设了 pointer-events:none 防止遮挡其他卡片；若指针捕获不可用，
+    // 由 document 兜底接收 pointerup，避免拖拽状态卡死。
+    docUp = (ev) => {
+      if (!active || ev.pointerId !== pointerId) return;
+      if (ev.type === "pointercancel") resetDrag(); else up(ev);
+    };
+    document.addEventListener("pointerup", docUp);
+    document.addEventListener("pointercancel", docUp);
     e.preventDefault();
     SFX.play("pick");
   };
@@ -171,6 +179,11 @@ function bindGeneDrag(el) {
   };
   const resetDrag = () => {
     active = false; pointerId = null;
+    if (docUp) {
+      document.removeEventListener("pointerup", docUp);
+      document.removeEventListener("pointercancel", docUp);
+      docUp = null;
+    }
     el.classList.remove("dragging");
     el.style.transform = "";
     document.querySelectorAll(".lab-slot").forEach((s) => s.classList.remove("hot"));
