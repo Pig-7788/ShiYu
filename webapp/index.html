@@ -8,6 +8,14 @@
 </head>
 <body>
 <div id="wrap">
+  <div class="splash" id="splash" role="status" aria-label="正在进入识渔计划">
+    <div class="splash-inner">
+      <div class="splash-logo">识渔<span>计划</span></div>
+      <div class="splash-sub">SHIYU · 反钓鱼攻防训练营</div>
+      <div class="splash-line"><i></i></div>
+      <div class="splash-hint">正在进入训练场</div>
+    </div>
+  </div>
   <div class="wm">教学模拟 DEMO</div>
   <header>
     <div class="logo">识渔<span>计划</span></div>
@@ -24,17 +32,15 @@
       <div class="rankline" id="home-rank"></div>
       <div class="home-actions">
         <button class="btn primary home-cta" id="b-story"><b>剧情模式</b><small>五章主线 · 每一次选择都算数</small></button>
-        <button class="btn home-cta" id="b-more"><b>更多玩法</b><small>拦截战 · 造浪者 · 我的画像 · 关于本作品</small></button>
       </div>
-    </section>
-
-    <section id="v-more" class="view">
-      <div class="xp-head good">更 多 玩 法</div>
-      <button class="btn primary" id="b-start"><b>拦截战 · 开始</b><small>10 次限时分拣（每波 1 张）→ 风险画像，可选拆解复盘</small></button>
-      <button class="btn danger" id="b-attack"><b>造浪者 · 组装实验室</b><small>拖卡装配+滑杆调参挑战AI防线，或自由撰写一封</small></button>
-      <button class="btn" id="b-profile"><b>我的画像</b><small>五维能力雷达 · 段位</small></button>
-      <button class="btn" id="b-about"><b>关于本作品</b><small>合规声明 · 技术方案摘要</small></button>
-      <button class="btn" id="b-home-more">返回首页</button>
+      <div class="home-section-label">训练与知识</div>
+      <div class="home-grid">
+        <button class="btn home-feature" id="b-start"><b>拦截战</b><small>10 次限时分拣</small></button>
+        <button class="btn home-feature" id="b-attack"><b>造浪者</b><small>拖卡调参 · 红蓝对抗</small></button>
+        <button class="btn home-feature" id="b-atlas"><b>反钓鱼知识库</b><small>4 域 · 22 条目</small></button>
+        <button class="btn home-feature" id="b-profile"><b>我的画像</b><small>五维雷达 · 段位</small></button>
+        <button class="btn home-feature wide" id="b-about"><b>关于本作品</b><small>合规声明 · 技术方案</small></button>
+      </div>
     </section>
 
     <section id="v-story" class="view">
@@ -70,9 +76,9 @@
       </div>
       <div class="card"><h3>最需要补的课</h3><ul class="topmiss advice" id="r-topmiss"></ul></div>
       <div class="card"><h3>个性化建议</h3><ul class="advice" id="r-advice"></ul></div>
+      <button class="kb-report-link" id="b-report-atlas">📖 打开反钓鱼知识库：按知识域查条目 →</button>
       <button class="btn primary" id="b-report-again"><b>再来一局 · 拦截战</b><small>重新十次分拣，刷新训练报告</small></button>
       <button class="btn" id="b-report-dismantle"><b>拆解复盘 · 可选</b><small>把本局钓鱼样本的破绽拖进类别槽</small></button>
-      <button class="btn" id="b-more-report">返回更多玩法</button>
       <button class="btn" id="b-home1">返回首页</button>
     </section>
 
@@ -108,12 +114,42 @@
           <li>讲解：标注字段模板渲染为主，个性化建议由大模型流式生成；</li>
           <li>本演示版为纯前端离线实现（localStorage 存档），后端化部署方案见作品开发文档。</li>
         </ul></div>
-      <div class="card"><h3>队伍</h3><p>长春理工大学 · 计算机科学技术学院<br>［队伍名称 / 成员 / 指导教师 待定稿］</p></div>
+      <div class="card"><h3>队伍</h3><p>［队伍名称 / 成员 / 指导教师 待定稿］</p></div>
+      <button class="btn" id="b-about-atlas"><b>反钓鱼知识库</b><small>知识域 · 条目 · 关联 · 出处</small></button>
       <button class="btn" id="b-home3">返回首页</button>
     </section>
 
+    <section id="v-atlas" class="view kb">
+      <div class="kb-top">
+        <button class="kb-back" id="kb-back" type="button">← 返回</button>
+        <nav class="kb-crumbs" id="kb-crumbs" aria-label="面包屑"></nav>
+        <div class="kb-tools">
+          <button class="kb-icon" id="kb-search-btn" type="button" aria-label="搜索知识库">🔍</button>
+          <button class="kb-icon" id="kb-tree-btn" type="button" aria-label="打开知识树">☰</button>
+        </div>
+      </div>
+      <div id="kb-body" class="kb-body"></div>
+    </section>
+
   </main>
-  <footer>识渔计划 SHIYU · 本平台所有样本均为虚构，仅用于识别训练<br>长春理工大学 · 计算机科学技术学院（参赛作品演示）</footer>
+
+    <div class="kb-overlay" id="kb-drawer" aria-hidden="true">
+      <div class="kb-mask" data-kb-close="drawer"></div>
+      <aside class="kb-drawer" role="dialog" aria-modal="true" aria-label="知识树目录">
+        <div class="kb-drawer-head"><b>知识树</b><button class="kb-close" id="kb-drawer-close" type="button" aria-label="关闭">×</button></div>
+        <div class="kb-drawer-body" id="kb-tree"></div>
+      </aside>
+    </div>
+    <div class="kb-overlay kb-search-overlay" id="kb-search-panel" aria-hidden="true">
+      <div class="kb-mask" data-kb-close="search"></div>
+      <div class="kb-search-box" role="dialog" aria-modal="true" aria-label="搜索知识库">
+        <div class="kb-search-head"><b>搜索知识库</b><button class="kb-close" id="kb-search-close" type="button" aria-label="关闭">×</button></div>
+        <input id="kb-search-input" class="kb-search-input" type="search" placeholder="搜索破绽、伪装卡、能力维度…" autocomplete="off">
+        <div class="kb-search-hint">支持标题、摘要、标签、关键点；按 Esc 关闭。</div>
+        <div id="kb-search-results" class="kb-search-results"></div>
+      </div>
+    </div>
+  <footer>识渔计划 SHIYU · 本平台所有样本均为虚构，仅用于识别训练</footer>
 </div>
 <script src="data.js"></script>
 <script src="story/STORY_WORLD.js"></script>

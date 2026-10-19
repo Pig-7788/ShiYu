@@ -280,23 +280,604 @@ function renderHome() {
     ? '段位 <b>' + S.report.rank + "</b> · 战绩 " + (S.report.score ?? "--") + ' · <span style="color:var(--txt-dim)">再战一轮刷新画像</span>'
     : '<span style="color:var(--txt-dim)">尚无画像 · 完成一场拦截战后生成</span>') + tail;
 }
+/* ================= 反钓鱼知识库（KB）：hash 路由 / L0-L1-L2 / 搜索 / 知识树 ================= */
+const KB_READ_KEY = "shiyu_kb_read_v1";
+const KB_DOMAIN_COLOR = { recognize: "#35e0c8", attack: "#ff5470", defense: "#7fb4ff", response: "#ffb84d" };
+const KB_TYPE_LABEL = { flag: "破绽", gene: "伪装卡", dim: "能力", response: "应急" };
+let kbReturn = "home";
+let KB_STATE = {
+  route: { type: "home" }, routeKey: "", q: "", homeQuery: "",
+  filter: { level: "all", tag: "all" }, back: "exit", backLabel: "← 退出", error: "", lastFocus: null,
+};
+let KB_READ = { read: {}, recent: [] };
+
+function kbRestoreRead() {
+  try {
+    const d = JSON.parse(localStorage.getItem(KB_READ_KEY) || "null");
+    if (d && typeof d === "object") {
+      KB_READ.read = d.read || {};
+      KB_READ.recent = Array.isArray(d.recent) ? d.recent : [];
+    }
+  } catch (e) {}
+}
+function kbSaveRead() {
+  try { localStorage.setItem(KB_READ_KEY, JSON.stringify(KB_READ)); } catch (e) {}
+}
+function kbIsRead(id) { return !!KB_READ.read[id]; }
+function kbTouchRecent(id) {
+  if (!KB_ENTRY_MAP[id]) return;
+  KB_READ.recent = [id].concat(KB_READ.recent.filter((x) => x !== id)).slice(0, 8);
+  kbSaveRead();
+}
+function kbToggleRead(id) {
+  if (!KB_ENTRY_MAP[id]) return;
+  const now = !KB_READ.read[id];
+  if (now) KB_READ.read[id] = true; else delete KB_READ.read[id];
+  kbSaveRead();
+  const btn = document.querySelector('[data-kb-read="' + id + '"]');
+  if (btn) {
+    btn.classList.toggle("on", now);
+    btn.textContent = now ? "✓ 已读" : "标记已读";
+  }
+}
+function kbProgress(ids) {
+  const total = ids.length;
+  const done = ids.filter(kbIsRead).length;
+  return { done, total, pct: total ? Math.round((done / total) * 100) : 0 };
+}
+function kbBar(p) {
+  return '<span class="kb-bar"><i style="width:' + p.pct + '%"></i></span>';
+}
+function kbAttr(s) {
+  return esc(String(s == null ? "" : s)).replace(/"/g, "&quot;");
+}
+
+/* ---------- 路由 ---------- */
+function kbParseHash() {
+  let raw = "";
+  try { raw = decodeURIComponent((location.hash || "").replace(/^#/, "")); }
+  catch (e) { raw = (location.hash || "").replace(/^#/, ""); }
+  const p = raw.split("/").filter(Boolean);
+  if (!p.length || p[0] !== "kb") return { type: "home" };
+  if (p.length === 1) return { type: "home" };
+  if (p[1] === "domain" && p[2]) {
+    if (!KB_DOMAIN_MAP[p[2]]) return { type: "invalid", reason: "未找到该知识域" };
+    if (p[3]) {
+      const sub = KB_SUBDOMAIN_MAP[p[3]];
+      if (!sub || sub.domain !== p[2] || p.length > 4) return { type: "invalid", reason: "未找到该子类" };
+      return { type: "domain", domain: p[2], sub: p[3] };
+    }
+    if (p.length > 3) return { type: "invalid", reason: "未找到该页面" };
+    return { type: "domain", domain: p[2] };
+  }
+  if (p[1] === "entry" && p[2] && p[3]) {
+    const id = p[2] + "/" + p[3];
+    if (!KB_ENTRY_MAP[id] || p.length > 4) return { type: "invalid", reason: "未找到该条目" };
+    return { type: "entry", id };
+  }
+  if (p[1] === "path" && p[2] && KB_PATH_MAP[p[2]] && p.length === 3) return { type: "path", id: p[2] };
+  return { type: "invalid", reason: "未找到该页面" };
+}
+function kbGo(hash) {
+  if (!hash) return;
+  const target = hash.charAt(0) === "#" ? hash : "#" + hash;
+  if (location.hash === target) kbRender();
+  else location.hash = target;
+}
+function kbOpen() {
+  const act = document.querySelector(".view.active");
+  const id = act ? act.id.replace(/^v-/, "") : "";
+  if (id && id !== "atlas") kbReturn = id;
+  if ((location.hash || "") !== "#kb") location.hash = "#kb";
+  else kbRender();
+}
+function kbExit() {
+  const target = (!kbReturn || kbReturn === "atlas") ? "home" : kbReturn;
+  try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+  if (target === "home") renderHome();
+  show(target);
+}
+
+/* ---------- 面包屑 / 返回 ---------- */
+function kbCrumbLink(href, label) {
+  return '<a href="' + href + '">' + esc(label) + "</a>";
+}
+function kbChrome(route) {
+  const sep = '<span class="kb-sep">›</span>';
+  if (route.type === "home" || route.type === "invalid") {
+    return { crumbs: '<span class="kb-crumb-current">知识库</span>', back: "exit", backLabel: "← 退出" };
+  }
+  if (route.type === "path") {
+    const p = KB_PATH_MAP[route.id];
+    return {
+      crumbs: kbCrumbLink("#kb", "知识库") + sep + '<span class="kb-crumb-current">' + esc(p.name) + "</span>",
+      back: "#kb", backLabel: "← 返回",
+    };
+  }
+  if (route.type === "domain") {
+    const d = KB_DOMAIN_MAP[route.domain];
+    if (route.sub) {
+      const s = KB_SUBDOMAIN_MAP[route.sub];
+      return {
+        crumbs: kbCrumbLink("#kb", "知识库") + sep + kbCrumbLink("#kb/domain/" + d.id, d.name) + sep +
+          '<span class="kb-crumb-current">' + esc(s.name) + "</span>",
+        back: "#kb/domain/" + d.id, backLabel: "← 返回",
+      };
+    }
+    return {
+      crumbs: kbCrumbLink("#kb", "知识库") + sep + '<span class="kb-crumb-current">' + esc(d.name) + "</span>",
+      back: "#kb", backLabel: "← 返回",
+    };
+  }
+  const e = KB_ENTRY_MAP[route.id];
+  const d = KB_DOMAIN_MAP[e.domain];
+  let crumbs = kbCrumbLink("#kb", "知识库") + sep + kbCrumbLink("#kb/domain/" + d.id, d.name);
+  let back = "#kb/domain/" + d.id;
+  if (e.subdomain) {
+    const s = KB_SUBDOMAIN_MAP[e.subdomain];
+    crumbs += sep + kbCrumbLink("#kb/domain/" + d.id + "/" + s.id, s.name);
+    back = "#kb/domain/" + d.id + "/" + s.id;
+  }
+  crumbs += sep + '<span class="kb-crumb-current">' + esc(e.title) + "</span>";
+  return { crumbs, back, backLabel: "← 返回" };
+}
+
+/* ---------- 渲染入口 ---------- */
+function kbRender() {
+  if (typeof KB_ENTRIES === "undefined") return;
+  let route = kbParseHash();
+  const key = JSON.stringify(route);
+  if (key !== KB_STATE.routeKey) {
+    KB_STATE.routeKey = key;
+    KB_STATE.q = "";
+    KB_STATE.homeQuery = "";
+    KB_STATE.filter = { level: "all", tag: "all" };
+  }
+  if (route.type === "invalid") {
+    KB_STATE.error = (route.reason || "未找到该页面") + "，已返回知识库首页。";
+    try { history.replaceState(null, "", location.pathname + location.search + "#kb"); } catch (e) {}
+    route = { type: "home" };
+    KB_STATE.invalid = true;
+  } else {
+    KB_STATE.invalid = false;
+  }
+  KB_STATE.route = route;
+  let html = "";
+  if (route.type === "home") {
+    if (!KB_STATE.invalid) KB_STATE.error = "";
+    html = kbHomeHTML();
+  } else if (route.type === "domain") {
+    KB_STATE.error = "";
+    html = kbDomainHTML(route);
+  } else if (route.type === "entry") {
+    KB_STATE.error = "";
+    html = kbEntryHTML(route);
+  } else if (route.type === "path") {
+    KB_STATE.error = "";
+    html = kbPathHTML(route);
+  }
+  const chrome = kbChrome(route);
+  KB_STATE.back = chrome.back;
+  KB_STATE.backLabel = chrome.backLabel;
+  $("#kb-crumbs").innerHTML = chrome.crumbs;
+  $("#kb-back").textContent = chrome.backLabel;
+  $("#kb-body").innerHTML = html;
+  show("atlas");
+  const view = $("#v-atlas");
+  if (view) view.scrollTop = 0;
+  kbBuildTree();
+  if (route.type === "entry") {
+    const e = KB_ENTRY_MAP[route.id];
+    if (e) kbTouchRecent(e.id);
+    const toc = $("#kb-toc");
+    if (toc && window.matchMedia("(min-width:560px)").matches) toc.open = true;
+  }
+}
+
+/* ---------- 首页 ---------- */
+function kbHomeHTML() {
+  const seen = KB_READ.recent.length > 0;
+  const recent = (seen ? KB_READ.recent : KB_RECENT).map((id) => KB_ENTRY_MAP[id]).filter(Boolean).slice(0, 5);
+  const domains = KB_DOMAINS.slice().sort((a, b) => a.order - b.order).map((d) => {
+    const list = KB_ENTRIES.filter((e) => e.domain === d.id);
+    const p = kbProgress(list.map((e) => e.id));
+    return `<a class="kb-domain-card" href="#kb/domain/${d.id}" style="--accent:${KB_DOMAIN_COLOR[d.id] || "#35e0c8"}">
+      <div class="kb-domain-icon" aria-hidden="true">${d.icon}</div>
+      <div class="kb-domain-head"><h3>${esc(d.name)}</h3><span>${esc(d.en)}</span></div>
+      <p>${esc(d.desc)}</p>
+      <div class="kb-domain-reps">${list.slice(0, 3).map((e) => '<span>' + esc(e.title) + "</span>").join("")}</div>
+      <div class="kb-domain-foot"><span>${list.length} 个条目</span><span>${p.done}/${p.total} 已读</span></div>
+      ${kbBar(p)}
+    </a>`;
+  }).join("");
+  const paths = KB_PATHS.map((p) => {
+    const prog = kbProgress(p.entryIds);
+    return `<a class="kb-path-card" href="#kb/path/${p.id}">
+      <div class="kb-path-icon" aria-hidden="true">${p.icon}</div>
+      <div class="kb-path-head"><h3>${esc(p.name)}</h3><span>${p.minutes} 分钟</span></div>
+      <p>${esc(p.desc)}</p>
+      <div class="kb-domain-foot"><span>${p.entryIds.length} 个条目</span><span>${prog.done}/${prog.total} 已读</span></div>
+      ${kbBar(prog)}
+    </a>`;
+  }).join("");
+  const recentHTML = recent.map((e) => `<a class="kb-recent" href="#kb/entry/${e.id}">
+    <span>${KB_TYPE_LABEL[e.type]}</span><b>${esc(e.title)}</b><small>${esc(e.subtitle)}</small></a>`).join("");
+  const sources = ATLAS_SOURCES.map((s) => `<li>${s.u
+    ? '<a href="' + s.u + '" target="_blank" rel="noopener noreferrer">' + esc(s.t) + " ↗</a>"
+    : "<b>" + esc(s.t) + "</b>"}<p>${esc(s.d)}</p></li>`).join("");
+  return `<div class="kb-page kb-home">
+    ${KB_STATE.error ? '<div class="kb-alert">' + esc(KB_STATE.error) + '<button class="kb-alert-close" data-kb-dismiss="error" type="button" aria-label="关闭提示">×</button></div>' : ""}
+    <header class="kb-hero">
+      <div class="kb-kicker">FIELD NOTES · 反钓鱼知识库</div>
+      <h1>反钓鱼知识库</h1>
+      <p>按知识域、条目、关联组织。先定位问题，再读条目，最后去训练验证。</p>
+      <div class="kb-stats">
+        <span><b>${KB_ENTRIES.length}</b> 条目</span><span><b>${KB_DOMAINS.length}</b> 知识域</span>
+        <span><b>${KB_PATHS.length}</b> 学习路径</span><span><b>${KB_META.totalSamples}</b> 训练样本</span>
+      </div>
+    </header>
+    <div class="kb-searchbar"><span aria-hidden="true">🔍</span><input id="kb-home-search" type="search" placeholder="搜索破绽、伪装卡、能力维度…" autocomplete="off"><kbd>/</kbd></div>
+    <div id="kb-home-results" class="kb-home-results"></div>
+    <section class="kb-block"><div class="kb-block-head"><h2>知识域</h2><span>KNOWLEDGE DOMAINS</span></div><div class="kb-domain-grid">${domains}</div></section>
+    <section class="kb-block"><div class="kb-block-head"><h2>学习路径</h2><span>LEARNING PATHS</span></div><div class="kb-path-grid">${paths}</div></section>
+    <section class="kb-block"><div class="kb-block-head"><h2>${seen ? "最近浏览" : "最近更新"}</h2><span>${seen ? "RECENTLY VIEWED" : "RECENT"}</span></div><div class="kb-recent-list">${recentHTML}</div></section>
+    <section class="kb-block"><div class="kb-block-head"><h2>怎么用</h2><span>HOW TO USE</span></div>
+      <ol class="kb-steps"><li>先读域描述，判断问题属于“识别 / 攻击 / 防御 / 应急”哪一类。</li><li>按学习路径读条目，或直接搜索关键词。</li><li>去拦截战或造浪者验证，再回条目页补课。</li></ol>
+    </section>
+    <details class="kb-details"><summary>资料来源与版本</summary><ul class="kb-source-list">${sources}</ul><p class="kb-muted">全部样本为虚构，仅用于教学模拟；不指向任何真实机构、个人或域名。知识版本 v${KB_META.version} · ${KB_META.updated}。</p></details>
+    <button class="kb-exit" data-kb-action="exit">退出知识库，返回进入前页面</button>
+  </div>`;
+}
+
+/* ---------- 知识域 / 子类 ---------- */
+function kbFilteredEntries(domain, sub) {
+  let list = KB_ENTRIES.filter((e) => e.domain === domain && (!sub || e.subdomain === sub));
+  if (KB_STATE.filter.level !== "all") list = list.filter((e) => e.level === KB_STATE.filter.level);
+  if (KB_STATE.filter.tag !== "all") list = list.filter((e) => e.tags.includes(KB_STATE.filter.tag));
+  const q = KB_STATE.q.trim().toLowerCase();
+  if (q) list = list.filter((e) => (e.title + e.summary + e.tags.join(" ") + e.keyPoints.join(" ")).toLowerCase().includes(q));
+  return list;
+}
+function kbRowHTML(e) {
+  return `<a class="kb-row" href="#kb/entry/${e.id}">
+    <div class="kb-row-head"><span class="kb-type">${KB_TYPE_LABEL[e.type]}</span><h3>${esc(e.title)}</h3><span class="kb-level">${esc(e.level)}</span></div>
+    <p>${esc(e.summary)}</p>
+    <div class="kb-row-meta"><span>${e.minutes} 分钟</span>${e.tags.slice(0, 2).map((t) => "<span>" + esc(t) + "</span>").join("")}<span>${kbIsRead(e.id) ? "✓ 已读" : "未读"}</span></div>
+  </a>`;
+}
+function kbDomainListHTML(route) {
+  const list = kbFilteredEntries(route.domain, route.sub);
+  if (!list.length) return '<div class="kb-empty">没有匹配的条目，试试清除筛选或换一个关键词。</div>';
+  if (route.domain === "attack" && !route.sub) {
+    return KB_SUBDOMAINS.filter((s) => s.domain === "attack").map((s) => {
+      const group = list.filter((e) => e.subdomain === s.id);
+      if (!group.length) return "";
+      return `<section class="kb-subgroup"><div class="kb-subgroup-head"><span aria-hidden="true">${s.icon}</span><div><h3>${esc(s.name)}</h3><p>${esc(s.desc)}</p></div><a href="#kb/domain/attack/${s.id}">查看子类 →</a></div>${group.map(kbRowHTML).join("")}</section>`;
+    }).join("");
+  }
+  return list.map(kbRowHTML).join("");
+}
+function kbDomainHTML(route) {
+  const d = KB_DOMAIN_MAP[route.domain];
+  const s = route.sub ? KB_SUBDOMAIN_MAP[route.sub] : null;
+  const base = KB_ENTRIES.filter((e) => e.domain === route.domain && (!route.sub || e.subdomain === route.sub));
+  const readP = kbProgress(base.map((e) => e.id));
+  const levels = ["入门", "进阶", "实战"].map((lv) => ({ lv, n: base.filter((e) => e.level === lv).length })).filter((x) => x.n);
+  const tags = [...new Set(base.flatMap((e) => e.tags))].slice(0, 10);
+  const levelBtns = ["all", "入门", "进阶", "实战"].map((lv) =>
+    `<button class="kb-filter ${KB_STATE.filter.level === lv ? "on" : ""}" data-kb-level="${lv}">${lv === "all" ? "全部难度" : lv}</button>`).join("");
+  const tagBtns = ['<button class="kb-filter ' + (KB_STATE.filter.tag === "all" ? "on" : "") + '" data-kb-tag="all">全部标签</button>']
+    .concat(tags.map((t) => `<button class="kb-filter ${KB_STATE.filter.tag === t ? "on" : ""}" data-kb-tag="${kbAttr(t)}">${esc(t)}</button>`)).join("");
+  return `<div class="kb-page kb-domain" style="--accent:${KB_DOMAIN_COLOR[route.domain] || "#35e0c8"}">
+    <header class="kb-domain-hero">
+      <div class="kb-kicker">${esc(d.en)} · KNOWLEDGE DOMAIN</div>
+      <div class="kb-domain-title"><span aria-hidden="true">${s ? s.icon : d.icon}</span><h1>${esc(s ? s.name : d.name)}</h1></div>
+      <p>${esc(s ? s.desc : d.desc)}</p>
+      <div class="kb-stats"><span><b>${base.length}</b> 条目</span><span><b>${readP.done}</b> 已读</span>${levels.map((x) => `<span><b>${x.n}</b> ${x.lv}</span>`).join("")}</div>
+      ${kbBar(readP)}
+    </header>
+    <div class="kb-filterbar">
+      <input id="kb-domain-search" class="kb-input" type="search" value="${kbAttr(KB_STATE.q)}" placeholder="在本知识域内搜索…" autocomplete="off">
+      <div class="kb-filter-row">${levelBtns}${tagBtns}</div>
+    </div>
+    <div class="kb-list-head"><span id="kb-domain-count">共 ${kbFilteredEntries(route.domain, route.sub).length} 条</span><span>点击条目查看详情</span></div>
+    <div id="kb-domain-list">${kbDomainListHTML(route)}</div>
+    <button class="kb-exit" data-kb-action="exit">退出知识库，返回进入前页面</button>
+  </div>`;
+}
+function kbRenderDomainList() {
+  const route = KB_STATE.route;
+  if (route.type !== "domain") return;
+  const host = $("#kb-domain-list");
+  if (host) host.innerHTML = kbDomainListHTML(route);
+  const count = $("#kb-domain-count");
+  if (count) count.textContent = "共 " + kbFilteredEntries(route.domain, route.sub).length + " 条";
+  document.querySelectorAll("[data-kb-level]").forEach((b) => b.classList.toggle("on", b.dataset.kbLevel === KB_STATE.filter.level));
+  document.querySelectorAll("[data-kb-tag]").forEach((b) => b.classList.toggle("on", b.dataset.kbTag === KB_STATE.filter.tag));
+}
+
+/* ---------- 学习路径 ---------- */
+function kbPathHTML(route) {
+  const p = KB_PATH_MAP[route.id];
+  const entries = p.entryIds.map((id) => KB_ENTRY_MAP[id]).filter(Boolean);
+  const prog = kbProgress(p.entryIds);
+  return `<div class="kb-page kb-path">
+    <header class="kb-path-hero">
+      <div class="kb-kicker">LEARNING PATH · 学习路径</div>
+      <h1><span aria-hidden="true">${p.icon}</span> ${esc(p.name)}</h1>
+      <p>${esc(p.desc)}</p>
+      <div class="kb-stats"><span><b>${entries.length}</b> 条目</span><span><b>${p.minutes}</b> 分钟</span><span><b>${prog.done}</b> 已读</span></div>
+      ${kbBar(prog)}
+    </header>
+    <div class="kb-path-list">${entries.map((e, i) => `<a class="kb-path-item" href="#kb/entry/${e.id}">
+      <span class="kb-path-no">${String(i + 1).padStart(2, "0")}</span>
+      <div><h3>${esc(e.title)}</h3><p>${esc(e.summary)}</p></div>
+      <span class="kb-level">${esc(e.level)}</span><span class="kb-read-dot">${kbIsRead(e.id) ? "✓" : "○"}</span>
+    </a>`).join("")}</div>
+    <button class="kb-exit" data-kb-action="exit">退出知识库，返回进入前页面</button>
+  </div>`;
+}
+
+/* ---------- 条目 ---------- */
+function kbRelatedHTML(entries) {
+  if (!entries.length) return '<p class="kb-muted">暂无关联条目。</p>';
+  return '<div class="kb-related-grid">' + entries.map((e) => `<a class="kb-related" href="#kb/entry/${e.id}">
+    <span>${KB_TYPE_LABEL[e.type]}</span><b>${esc(e.title)}</b><small>${esc(e.subtitle)}</small></a>`).join("") + "</div>";
+}
+function kbEntryHTML(route) {
+  const e = KB_ENTRY_MAP[route.id];
+  if (!e) return kbHomeHTML();
+  const d = KB_DOMAIN_MAP[e.domain];
+  const siblings = KB_ENTRIES.filter((x) => x.domain === e.domain);
+  const idx = siblings.findIndex((x) => x.id === e.id);
+  const prev = idx > 0 ? siblings[idx - 1] : null;
+  const next = idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1] : null;
+  const related = e.related.map((id) => KB_ENTRY_MAP[id]).filter(Boolean);
+  const backlinks = KB_ENTRIES.filter((x) => x.id !== e.id && x.related.includes(e.id));
+  const toc = e.sections.map((s) => `<li><button type="button" data-kb-toc="kb-sec-${s.id}">${esc(s.title)}</button></li>`).join("");
+  const sections = e.sections.map((s) => {
+    let inner = "<p>" + esc(s.body) + "</p>";
+    if (s.id === "example") inner = '<blockquote class="kb-quote">' + esc(s.body) + "</blockquote>" + (s.note ? '<p class="kb-note">' + esc(s.note) + "</p>" : "");
+    return `<section class="kb-sec" id="kb-sec-${s.id}"><h2>${esc(s.title)}</h2>${inner}</section>`;
+  }).join("");
+  const keyPoints = e.keyPoints.length
+    ? '<div class="kb-callout"><b>关键点</b><ul>' + e.keyPoints.map((x) => "<li>" + esc(x) + "</li>").join("") + "</ul></div>" : "";
+  const mis = e.misconceptions.length
+    ? '<ul class="kb-warn-list">' + e.misconceptions.map((x) => "<li>" + esc(x) + "</li>").join("") + "</ul>"
+    : '<p class="kb-muted">暂未收录。</p>';
+  const read = kbIsRead(e.id);
+  const action = e.domain === "attack" ? "attack" : "train";
+  const actionLabel = e.domain === "attack" ? "去造浪者验证" : "去拦截战验证";
+  const tocOpen = window.matchMedia("(min-width:560px)").matches ? " open" : "";
+  return `<div class="kb-page kb-entry" style="--accent:${e.accent || KB_DOMAIN_COLOR[e.domain] || "#35e0c8"}">
+    <header class="kb-entry-head">
+      <div class="kb-kicker">${KB_TYPE_LABEL[e.type]} · ${esc(d.name)}</div>
+      <h1>${esc(e.title)}</h1>
+      <p class="kb-subtitle">${esc(e.subtitle)}</p>
+      <p class="kb-entry-summary">${esc(e.summary)}</p>
+      <div class="kb-meta"><span class="kb-level">${esc(e.level)}</span><span>${e.minutes} 分钟</span><span>${esc(e.audience.join(" / "))}</span><span>更新 ${esc(e.updated)}</span>${e.sampleRefs.length ? "<span>关联样本 " + e.sampleRefs.length + " 个</span>" : ""}</div>
+      <div class="kb-tags">${e.tags.map((t) => "<span>" + esc(t) + "</span>").join("")}</div>
+      <div class="kb-entry-actions"><button class="kb-read-btn ${read ? "on" : ""}" data-kb-read="${e.id}">${read ? "✓ 已读" : "标记已读"}</button><button class="kb-train-btn" data-kb-action="${action}">${actionLabel}</button></div>
+    </header>
+    <div class="kb-entry-grid">
+      <details class="kb-toc" id="kb-toc"${tocOpen}><summary>本页目录 <span>${e.sections.length} 节</span></summary><ol>${toc}</ol></details>
+      <article class="kb-article">
+        ${sections}
+        ${keyPoints}
+        <section class="kb-entry-sec"><h2>常见误区</h2>${mis}</section>
+        <section class="kb-entry-sec"><h2>关联知识</h2>${kbRelatedHTML(related)}</section>
+        <section class="kb-entry-sec"><h2>被以下条目引用</h2>${kbRelatedHTML(backlinks)}</section>
+        <section class="kb-entry-sec" id="kb-sources"><h2>出处与更新</h2><ul class="kb-source-list">${e.sources.map((s) => "<li>" + esc(s) + "</li>").join("")}</ul><p class="kb-muted">知识版本 v${KB_META.version} · 更新 ${esc(e.updated)} · 仅用于教学模拟。</p></section>
+        <div class="kb-prevnext">${prev ? '<a href="#kb/entry/' + prev.id + '">← ' + esc(prev.title) + "</a>" : "<span></span>"}${next ? '<a href="#kb/entry/' + next.id + '">' + esc(next.title) + " →</a>" : "<span></span>"}</div>
+      </article>
+    </div>
+    <button class="kb-exit" data-kb-action="exit">退出知识库，返回进入前页面</button>
+  </div>`;
+}
+
+/* ---------- 搜索 ---------- */
+function kbSearch(query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return [];
+  return KB_ENTRIES.map((e) => {
+    let score = 0;
+    if (e.title.toLowerCase().includes(q)) score += 8;
+    if (e.subtitle.toLowerCase().includes(q)) score += 2;
+    if (e.summary.toLowerCase().includes(q)) score += 3;
+    if (e.tags.some((t) => t.toLowerCase().includes(q))) score += 4;
+    if (e.keyPoints.some((t) => String(t).toLowerCase().includes(q))) score += 2;
+    if (e.sections.some((s) => String(s.title + s.body).toLowerCase().includes(q))) score += 1;
+    return { e, score };
+  }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 30);
+}
+function kbHighlight(text, q) {
+  const safe = esc(String(text || ""));
+  const query = String(q || "").trim();
+  if (!query) return safe;
+  const re = new RegExp("(" + query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi");
+  return safe.replace(re, "<mark>$1</mark>");
+}
+function kbSearchListHTML(results, q, compact) {
+  if (!q) return '<div class="kb-empty">输入关键词开始搜索。</div>';
+  if (!results.length) return '<div class="kb-empty">没有找到“' + esc(q) + '”相关条目。</div>';
+  const list = compact ? results.slice(0, 6) : results;
+  const groups = {};
+  list.forEach(({ e }) => { (groups[e.domain] = groups[e.domain] || []).push(e); });
+  return Object.keys(groups).map((id) => {
+    const d = KB_DOMAIN_MAP[id];
+    return `<div class="kb-search-group"><div class="kb-search-group-head">${d.icon} ${esc(d.name)}</div>${groups[id].map((e) => `<a class="kb-search-item" href="#kb/entry/${e.id}"><b>${kbHighlight(e.title, q)}</b><span>${kbHighlight(e.summary, q)}</span><small>${KB_TYPE_LABEL[e.type]} · ${esc(e.level)}</small></a>`).join("")}</div>`;
+  }).join("");
+}
+function kbRenderSearchResults() {
+  const input = $("#kb-search-input");
+  const host = $("#kb-search-results");
+  if (!input || !host) return;
+  const q = input.value.trim();
+  host.innerHTML = kbSearchListHTML(kbSearch(q), q, false);
+}
+
+/* ---------- 知识树 / 浮层 ---------- */
+function kbTreeLink(e) {
+  const active = KB_STATE.route.type === "entry" && KB_STATE.route.id === e.id;
+  return `<a class="kb-tree-link${active ? " active" : ""}" href="#kb/entry/${e.id}"><span>${KB_TYPE_LABEL[e.type]}</span>${esc(e.title)}</a>`;
+}
+function kbBuildTree() {
+  const root = $("#kb-tree");
+  if (!root) return;
+  const cur = KB_STATE.route;
+  const curEntry = cur.type === "entry" ? KB_ENTRY_MAP[cur.id] : null;
+  root.innerHTML = KB_DOMAINS.map((d) => {
+    const list = KB_ENTRIES.filter((e) => e.domain === d.id);
+    const dActive = (cur.type === "domain" && cur.domain === d.id) || (curEntry && curEntry.domain === d.id);
+    let body = "";
+    if (d.id === "attack") {
+      body = KB_SUBDOMAINS.filter((s) => s.domain === "attack").map((s) => {
+        const es = list.filter((e) => e.subdomain === s.id);
+        const sActive = (cur.type === "domain" && cur.domain === "attack" && cur.sub === s.id) || (curEntry && curEntry.subdomain === s.id);
+        return `<div class="kb-tree-sub"><a class="kb-tree-subhead${sActive ? " active" : ""}" href="#kb/domain/attack/${s.id}"><span>${s.icon}</span>${esc(s.name)}<em>${es.length}</em></a>${es.map(kbTreeLink).join("")}</div>`;
+      }).join("");
+    } else {
+      body = list.map(kbTreeLink).join("");
+    }
+    return `<section class="kb-tree-domain"><a class="kb-tree-domainhead${dActive ? " active" : ""}" href="#kb/domain/${d.id}"><span>${d.icon}</span><b>${esc(d.name)}</b><em>${list.length}</em></a>${body}</section>`;
+  }).join("");
+}
+function kbOpenDrawer() {
+  kbCloseSearch();
+  kbBuildTree();
+  const el = $("#kb-drawer");
+  if (!el) return;
+  KB_STATE.lastFocus = document.activeElement;
+  el.classList.add("open");
+  el.setAttribute("aria-hidden", "false");
+  const btn = $("#kb-drawer-close");
+  if (btn) btn.focus();
+}
+function kbCloseDrawer() {
+  const el = $("#kb-drawer");
+  if (el) { el.classList.remove("open"); el.setAttribute("aria-hidden", "true"); }
+  if (KB_STATE.lastFocus && KB_STATE.lastFocus.focus) KB_STATE.lastFocus.focus();
+}
+function kbOpenSearch(initial) {
+  kbCloseDrawer();
+  const el = $("#kb-search-panel");
+  const input = $("#kb-search-input");
+  if (!el || !input) return;
+  KB_STATE.lastFocus = document.activeElement;
+  el.classList.add("open");
+  el.setAttribute("aria-hidden", "false");
+  input.value = initial || "";
+  kbRenderSearchResults();
+  input.focus();
+}
+function kbCloseSearch() {
+  const el = $("#kb-search-panel");
+  if (el) { el.classList.remove("open"); el.setAttribute("aria-hidden", "true"); }
+  if (KB_STATE.lastFocus && KB_STATE.lastFocus.focus) KB_STATE.lastFocus.focus();
+}
+
+/* ---------- 事件 ---------- */
+function kbDelegatedClick(e) {
+  const dismiss = e.target.closest("[data-kb-dismiss]");
+  if (dismiss) { KB_STATE.error = ""; const box = dismiss.closest(".kb-alert"); if (box) box.remove(); return; }
+  const close = e.target.closest("[data-kb-close]");
+  if (close) { e.preventDefault(); if (close.dataset.kbClose === "drawer") kbCloseDrawer(); else kbCloseSearch(); return; }
+  const toc = e.target.closest("[data-kb-toc]");
+  if (toc) {
+    e.preventDefault();
+    const el = document.getElementById(toc.dataset.kbToc);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  const read = e.target.closest("[data-kb-read]");
+  if (read) { e.preventDefault(); kbToggleRead(read.dataset.kbRead); return; }
+  const lvl = e.target.closest("[data-kb-level]");
+  if (lvl) { KB_STATE.filter.level = lvl.dataset.kbLevel; kbRenderDomainList(); return; }
+  const tag = e.target.closest("[data-kb-tag]");
+  if (tag) { KB_STATE.filter.tag = tag.dataset.kbTag; kbRenderDomainList(); return; }
+  const act = e.target.closest("[data-kb-action]");
+  if (act) {
+    e.preventDefault();
+    if (act.dataset.kbAction === "exit") kbExit();
+    else if (act.dataset.kbAction === "attack") startAttack(true);
+    else if (act.dataset.kbAction === "train") startGame();
+    return;
+  }
+  if (e.target.closest("#kb-drawer a")) { kbCloseDrawer(); return; }
+  if (e.target.closest("#kb-search-results a")) { kbCloseSearch(); }
+}
+function kbDelegatedInput(e) {
+  if (e.target.id === "kb-home-search") {
+    const q = e.target.value.trim();
+    KB_STATE.homeQuery = q;
+    const host = $("#kb-home-results");
+    if (host) host.innerHTML = q ? '<div class="kb-inline-results">' + kbSearchListHTML(kbSearch(q), q, true) + "</div>" : "";
+  } else if (e.target.id === "kb-domain-search") {
+    KB_STATE.q = e.target.value;
+    kbRenderDomainList();
+  } else if (e.target.id === "kb-search-input") {
+    kbRenderSearchResults();
+  }
+}
+function kbKeydown(e) {
+  const search = $("#kb-search-panel");
+  const drawer = $("#kb-drawer");
+  if (e.key === "Escape") {
+    if (search && search.classList.contains("open")) { kbCloseSearch(); e.preventDefault(); return; }
+    if (drawer && drawer.classList.contains("open")) { kbCloseDrawer(); e.preventDefault(); return; }
+  }
+  if (!$("#v-atlas").classList.contains("active")) return;
+  const typing = e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable;
+  if ((e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k")) && !typing) {
+    e.preventDefault();
+    kbOpenSearch("");
+  }
+}
+function kbHashChange() {
+  const h = location.hash || "";
+  if (h === "#kb" || h.indexOf("#kb/") === 0) { kbRender(); return; }
+  if ($("#v-atlas").classList.contains("active")) {
+    const target = (!kbReturn || kbReturn === "atlas") ? "home" : kbReturn;
+    if (target === "home") renderHome();
+    show(target);
+  }
+}
+
 function init() {
   restore();
+  const splash = $("#splash");
+  if (splash) setTimeout(() => { splash.classList.add("done"); setTimeout(() => splash.remove(), 380); }, 2000);
   Officer.initVoice();
   const pet = $("#hero-pet");
   if (pet) pet.innerHTML = officerChar();
   renderHome();
   $("#b-story").onclick = () => Story.open();
-  $("#b-more").onclick = () => show("more");
-  $("#b-home-more").onclick = () => { renderHome(); show("home"); };
   $("#b-start").onclick = () => startGame();
   $("#b-attack").onclick = () => startAttack(true);
   $("#b-profile").onclick = () => { renderProfile(); show("profile"); };
   $("#b-about").onclick = () => show("about");
+  kbRestoreRead();
+  $("#b-atlas").onclick = kbOpen;
+  $("#b-report-atlas").onclick = kbOpen;
+  $("#b-about-atlas").onclick = kbOpen;
+  $("#kb-back").onclick = () => { if (KB_STATE.back === "exit") kbExit(); else kbGo(KB_STATE.back); };
+  $("#kb-search-btn").onclick = () => kbOpenSearch("");
+  $("#kb-tree-btn").onclick = kbOpenDrawer;
+  $("#kb-drawer-close").onclick = kbCloseDrawer;
+  $("#kb-search-close").onclick = kbCloseSearch;
+  document.querySelectorAll("[data-kb-close]").forEach((el) => {
+    el.onclick = () => { if (el.dataset.kbClose === "drawer") kbCloseDrawer(); else kbCloseSearch(); };
+  });
+  document.addEventListener("click", kbDelegatedClick);
+  document.addEventListener("input", kbDelegatedInput);
+  document.addEventListener("keydown", kbKeydown);
+  window.addEventListener("hashchange", kbHashChange);
+  kbBuildTree();
+  const initialHash = location.hash || "";
+  if (initialHash === "#kb" || initialHash.indexOf("#kb/") === 0) kbRender();
   $("#b-home1").onclick = $("#b-home2").onclick = $("#b-home3").onclick = () => { Officer.cancel(); renderHome(); show("home"); };
   $("#b-report-again").onclick = () => startGame();
   $("#b-report-dismantle").onclick = () => startReviewDismantle();
-  $("#b-more-report").onclick = () => { renderHome(); show("more"); };
   const vb = $("#a-voice");
   if (vb) vb.onclick = () => Officer.toggle();
   Officer.syncBtn();

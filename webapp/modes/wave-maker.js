@@ -21,7 +21,7 @@ function exitAttack() {
   ATK_RUN++;
   Officer.cancel();
   renderHome();
-  show("more");
+  show("home");
 }
 function labCardsFor(slots, key) {
   const raw = slots ? slots[key] : null;
@@ -430,7 +430,7 @@ function launchFreeAttack() {
 function bindAttackResult() {
   const a = S.atk;
   const more = $("#a-home");
-  if (more) more.onclick = () => { Officer.cancel(); renderHome(); show("more"); };
+  if (more) more.onclick = () => { Officer.cancel(); renderHome(); show("home"); };
   const restart = $("#a-restart");
   if (restart) restart.onclick = () => {
     S.atk = { round: 1, mode: "genes", slots: {}, history: [], best: a.best, freeHits: a.freeHits, freeText: a.freeText, sl: a.sl };
@@ -459,7 +459,7 @@ function reviewHTML() {
       FREE_RULES.filter((r) => a.freeHits[r.k]).map((r) => "<li><b>" + r.name + "</b>（触发 " + a.freeHits[r.k] + " 次）：" + r.know + "</li>").join("") + "</ul></div>" : ""}
     <p style="text-align:center;color:var(--txt-dim);font-size:12px">最佳逃脱检出率：${a.best}%</p>
     <button class="btn primary" style="text-align:center" id="a-restart">再来三回合</button>
-    <button class="btn" style="text-align:center" id="a-home">返回玩法选择</button>`;
+    <button class="btn" style="text-align:center" id="a-home">返回首页</button>`;
 }
 
 document.addEventListener("DOMContentLoaded", () => {

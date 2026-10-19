@@ -21,7 +21,7 @@ function startGame() {
   show("game"); nextCard();
 }
 function exitGame() {
-  if (!G) { show("more"); return; }
+  if (!G) { renderHome(); show("home"); return; }
   if (G.done) {
     Officer.cancel();
     DM = null;
@@ -36,7 +36,7 @@ function exitGame() {
   DM = null;
   $("#v-game").classList.remove("shake");
   renderHome();
-  show("more");
+  show("home");
 }
 function wave() { return G ? WAVES[G.waveIdx] : null; }
 function cardFace(q) {
